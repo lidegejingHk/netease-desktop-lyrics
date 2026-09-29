@@ -1,4 +1,5 @@
 pub mod decoder;
+pub mod reader;
 
 use std::time::Instant;
 
