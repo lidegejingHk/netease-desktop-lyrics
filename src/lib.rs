@@ -2,6 +2,7 @@ pub mod accessibility;
 pub mod audio;
 pub mod decoder;
 pub mod leveldb_log;
+pub mod playback;
 pub mod process;
 pub mod reader;
 pub mod timeline;
@@ -31,6 +32,7 @@ pub enum Diagnostic {
     MissingField(&'static str),
     ProcessQueryFailed,
     ReadFailed,
+    AccessibilityPermissionDenied,
     PermissionDenied,
     FormatChanged,
 }
