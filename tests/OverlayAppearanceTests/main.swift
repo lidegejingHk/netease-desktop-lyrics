@@ -108,10 +108,24 @@ let handle = controls.panel.contentView!.subviews.first!
 check(handle.isAccessibilityElement() && handle.accessibilityRole() == .button,
       "Drag handle is exposed as an accessible control")
 check(!controls.panel.ignoresMouseEvents, "Toolbar is interactive by default")
+var tappedLock = 0
+var tappedSettings = 0
+var tappedCollapse = 0
+controls.onToggleLock = { tappedLock += 1 }
+controls.onToggleSettings = { tappedSettings += 1 }
+controls.onToggleCollapsed = { tappedCollapse += 1 }
+let toolbarButtons = controls.panel.contentView!.subviews.compactMap { $0 as? NSButton }
+toolbarButtons.first(where: { $0.accessibilityLabel() == "锁定歌词位置" })!.performClick(nil)
+toolbarButtons.first(where: { $0.accessibilityLabel() == "设置歌词样式" })!.performClick(nil)
+toolbarButtons.first(where: { $0.accessibilityLabel() == "收起工具条" })!.performClick(nil)
+check(tappedLock == 1 && tappedSettings == 1 && tappedCollapse == 1,
+      "Toolbar actions dispatch to their owning controller")
 controls.setLocked(true)
 check(!controls.panel.ignoresMouseEvents, "Toolbar stays interactive while lyrics lock")
 controls.setCollapsed(true)
 check(near(controls.panel.frame.width, 38), "Collapsed toolbar width")
+toolbarButtons.first(where: { $0.accessibilityLabel() == "展开歌词工具条" })!.performClick(nil)
+check(tappedCollapse == 2, "Collapsed toolbar exposes an expand action")
 controls.setCollapsed(false)
 check(near(controls.panel.frame.width, 166), "Restored toolbar width")
 controls.follow(overlay: NSRect(x: 100, y: 100, width: 760, height: 112),
@@ -139,5 +153,34 @@ let sliders = settings.panel.contentView!.subviews.compactMap { $0 as? NSSlider 
 check(wells.count == 3 && sliders.count == 2, "Color and opacity controls are present")
 check(sliders.contains(where: { $0.accessibilityLabel() == "浮层背景不透明度" }),
       "Opacity labels describe the actual slider semantics")
+var sentStyle: OverlayStyle?
+settings.onStyleChange = { sentStyle = $0 }
+func deliverChange(_ control: NSControl) {
+    check(NSApp.sendAction(control.action!, to: control.target, from: control),
+          "Native appearance control delivers its action")
+}
+let backgroundWell = wells.first(where: { $0.accessibilityLabel() == "浮层背景颜色" })!
+backgroundWell.color = NSColor(srgbRed: 0, green: 1, blue: 0, alpha: 1)
+deliverChange(backgroundWell)
+check(sentStyle?.backgroundRGB == "#00FF00", "Color well sends live background color")
+let textWell = wells.first(where: { $0.accessibilityLabel() == "歌词文字颜色" })!
+textWell.color = NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
+deliverChange(textWell)
+check(sentStyle?.textRGB == "#FF0000", "Color well sends live lyric text color")
+let chipWell = wells.first(where: { $0.accessibilityLabel() == "文字背底颜色" })!
+chipWell.color = NSColor(srgbRed: 0, green: 0, blue: 1, alpha: 1)
+deliverChange(chipWell)
+check(sentStyle?.chipRGB == "#0000FF", "Color well sends live text backing color")
+let backgroundOpacitySlider = sliders.first(where: { $0.accessibilityLabel() == "浮层背景不透明度" })!
+backgroundOpacitySlider.doubleValue = 25
+deliverChange(backgroundOpacitySlider)
+check(sentStyle?.backgroundOpacity == 0.25, "Background opacity sends live update")
+let chipOpacitySlider = sliders.first(where: { $0.accessibilityLabel() == "文字背底不透明度" })!
+chipOpacitySlider.doubleValue = 60
+deliverChange(chipOpacitySlider)
+check(sentStyle?.chipOpacity == 0.6, "Text backing opacity sends live update")
+settings.panel.contentView!.subviews.compactMap { $0 as? NSButton }
+    .first(where: { $0.title == "恢复默认" })!.performClick(nil)
+check(sentStyle == .defaultValue, "Reset restores all original colors and opacity")
 
 print("Overlay appearance: all assertions passed")
