@@ -120,6 +120,22 @@ mod tests {
         assert!(matches!(reader.read(), Err(ReadError::MissingDirectory)));
     }
     #[test]
+    fn empty_directory_has_no_song() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut reader = Reader::new(dir.path().to_path_buf());
+        assert!(reader.read().unwrap().is_none());
+    }
+    #[test]
+    fn inaccessible_directory_reports_permission_denied() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let original = fs::metadata(dir.path()).unwrap().permissions();
+        fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o000)).unwrap();
+        let result = Reader::new(dir.path().to_path_buf()).read();
+        fs::set_permissions(dir.path(), original).unwrap();
+        assert!(matches!(result, Err(ReadError::PermissionDenied)));
+    }
+    #[test]
     fn last_log_record_wins_and_reset_drops_stale_track() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("000001.log");
