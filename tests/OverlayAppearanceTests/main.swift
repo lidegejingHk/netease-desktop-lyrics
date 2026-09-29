@@ -56,6 +56,8 @@ defaults.set(-0.01, forKey: "overlayStyle.backgroundOpacity")
 defaults.set(Double.infinity, forKey: "overlayStyle.chipOpacity")
 check(store.load().backgroundOpacity == baseline.backgroundOpacity, "Negative fallback")
 check(store.load().chipOpacity == baseline.chipOpacity, "Infinity fallback")
+defaults.set(true, forKey: "overlayStyle.backgroundOpacity")
+check(store.load().backgroundOpacity == baseline.backgroundOpacity, "Boolean opacity fallback")
 
 let screen = NSRect(x: 0, y: 0, width: 1000, height: 600)
 let size = NSSize(width: 166, height: 38)

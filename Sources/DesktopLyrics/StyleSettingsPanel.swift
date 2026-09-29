@@ -56,7 +56,7 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
 
     private func addWell(_ well: NSColorWell, label: String, y: CGFloat, to root: NSView) {
         well.frame = NSRect(x: 260, y: y, width: 96, height: 28)
-        well.supportsAlpha = false
+        if #available(macOS 14.0, *) { well.supportsAlpha = false }
         well.target = self
         well.action = #selector(colorChanged(_:))
         well.setAccessibilityLabel(label)

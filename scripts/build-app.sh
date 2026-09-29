@@ -2,6 +2,7 @@
 set -euo pipefail
 root="$(cd -- "$(dirname -- "$0")/.." && pwd -P)"
 cd "$root"
+export MACOSX_DEPLOYMENT_TARGET=13.0
 output="dist/网易云桌面歌词.app"
 bundle_id="com.local.netease-desktop-lyrics"
 while (( $# > 0 )); do
@@ -23,7 +24,8 @@ plutil -replace CFBundleIdentifier -string "$bundle_id" "$app/Contents/Info.plis
 engine="$app/Contents/Resources/netease-lyrics-rs"
 executable="$app/Contents/MacOS/NeteaseDesktopLyrics"
 cp target/release/netease-lyrics-rs "$engine"
-xcrun swiftc -O -warnings-as-errors -framework AppKit -framework Foundation Sources/DesktopLyrics/*.swift \
+xcrun swiftc -O -warnings-as-errors -target arm64-apple-macos13.0 \
+  -framework AppKit -framework Foundation Sources/DesktopLyrics/*.swift \
   -o "$executable"
 chmod +x "$executable" "$engine"
 plutil -lint "$app/Contents/Info.plist"
