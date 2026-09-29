@@ -3,7 +3,8 @@ set -euo pipefail
 root="$(cd -- "$(dirname -- "$0")/.." && pwd -P)"
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
-xcrun swiftc -warnings-as-errors -framework AppKit -framework Foundation \
+xcrun swiftc -target arm64-apple-macos13.0 -warnings-as-errors \
+  -framework AppKit -framework Foundation \
   "$root/Sources/DesktopLyrics/OverlayStyle.swift" \
   "$root/Sources/DesktopLyrics/ToolbarPlacement.swift" \
   "$root/Sources/DesktopLyrics/OverlayVisibility.swift" \
