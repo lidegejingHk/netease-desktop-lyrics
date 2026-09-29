@@ -80,6 +80,15 @@ let moved = ToolbarPlacement.origin(
     visibleFrames: [screen, secondScreen]
 )
 check(near(moved.x, 1894) && near(moved.y, 220), "Follows active display")
+let safelyKept = OverlayVisibility.origin(
+    for: NSRect(x: 1200, y: 100, width: 760, height: 112), visibleFrames: [screen, secondScreen]
+)
+check(near(safelyKept.x, 1200) && near(safelyKept.y, 100), "Keep visible lyric window")
+let rescued = OverlayVisibility.origin(
+    for: NSRect(x: 1300, y: 1200, width: 760, height: 112), visibleFrames: [screen]
+)
+check(near(rescued.x, 240) && near(rescued.y, 488), "Recover lyric window from disconnected display")
+
 let isolated = ToolbarPlacement.origin(
     overlay: NSRect(x: 2400, y: 200, width: 760, height: 112),
     size: size,
