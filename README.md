@@ -24,7 +24,7 @@ track=example-id raw_ms=148000 estimated_ms=148561 playing=true observed_t+720ms
 - `playing`：CoreAudio 对网易云主进程及 Helper 进程的输出活动判断；不是网易云公开的播放状态 API，也可能在设备/版本变化时与实际播放不符。
 - `observed_t+…ms`：距离本次 CLI 启动的单调时间，不是墙上时钟。
 
-异常以 `unavailable: …` 明确输出：`NotRunning`（未检测到主进程）、`NoSong`（当前日志没有可用记录）、`MissingDirectory`、`MissingField(…)`、`PermissionDenied`、`FormatChanged` 等。没有可靠播放状态时不返回貌似完整的快照。
+异常以 `unavailable: …` 明确输出：`NotRunning`（未检测到主进程）、`NoSong`（当前日志没有可用记录）、`MissingDirectory`、`MissingField(…)`、`PermissionDenied`、`FormatChanged`、`ProcessQueryFailed`、`ReadFailed` 等。没有可靠播放状态时不返回貌似完整的快照。
 
 ## 数据来源与边界
 

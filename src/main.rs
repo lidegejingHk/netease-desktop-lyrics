@@ -49,7 +49,17 @@ fn on_process_discovery_error(
     *active_pid = None;
     reader.reset();
     timeline.reset();
-    Diagnostic::MissingField("process_list")
+    Diagnostic::ProcessQueryFailed
+}
+
+fn reader_diagnostic(error: ReadError) -> Diagnostic {
+    match error {
+        ReadError::MissingDirectory => Diagnostic::MissingDirectory,
+        ReadError::MissingField(field) => Diagnostic::MissingField(field),
+        ReadError::PermissionDenied => Diagnostic::PermissionDenied,
+        ReadError::FormatChanged => Diagnostic::FormatChanged,
+        ReadError::Io(_) => Diagnostic::ReadFailed,
+    }
 }
 
 fn sample(
@@ -79,13 +89,7 @@ fn sample(
         }
         Err(error) => {
             timeline.reset();
-            return Err(match error {
-                ReadError::MissingDirectory => Diagnostic::MissingDirectory,
-                ReadError::MissingField(field) => Diagnostic::MissingField(field),
-                ReadError::PermissionDenied => Diagnostic::PermissionDenied,
-                ReadError::FormatChanged => Diagnostic::FormatChanged,
-                ReadError::Io(_) => Diagnostic::MissingField("local_log_io"),
-            });
+            return Err(reader_diagnostic(error));
         }
     };
     let Some(is_playing) = audio::is_running_output(&pids) else {
@@ -144,8 +148,12 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{on_process_discovery_error, parse};
-    use netease_lyrics_rs::{reader::Reader, timeline::Timeline, Diagnostic};
+    use super::{on_process_discovery_error, parse, reader_diagnostic};
+    use netease_lyrics_rs::{
+        reader::{ReadError, Reader},
+        timeline::Timeline,
+        Diagnostic,
+    };
     use std::path::PathBuf;
     #[test]
     fn arguments_are_bounded() {
@@ -164,6 +172,12 @@ mod tests {
     }
 
     #[test]
+    fn io_failure_is_not_a_missing_playback_field() {
+        let error = ReadError::Io(std::io::Error::other("test read failure"));
+        assert_eq!(reader_diagnostic(error), Diagnostic::ReadFailed);
+    }
+
+    #[test]
     fn process_query_failure_resets_old_timeline_and_pid() {
         let mut reader = Reader::new(PathBuf::from("unused"));
         let mut timeline = Timeline::default();
@@ -171,7 +185,7 @@ mod tests {
         timeline.update("a", 1_000, true, 0);
         assert_eq!(
             on_process_discovery_error(&mut reader, &mut timeline, &mut active_pid),
-            Diagnostic::MissingField("process_list")
+            Diagnostic::ProcessQueryFailed
         );
         assert_eq!(active_pid, None);
         assert_eq!(timeline.update("a", 1_000, true, 5_000), 1_000);
