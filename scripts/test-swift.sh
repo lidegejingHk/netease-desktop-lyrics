@@ -5,6 +5,7 @@ temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
 xcrun swiftc -target arm64-apple-macos13.0 -warnings-as-errors \
   -framework AppKit -framework Foundation \
+  "$root/Sources/DesktopLyrics/LaunchMode.swift" \
   "$root/Sources/DesktopLyrics/OverlayStyle.swift" \
   "$root/Sources/DesktopLyrics/ToolbarPlacement.swift" \
   "$root/Sources/DesktopLyrics/OverlayVisibility.swift" \

@@ -23,6 +23,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private var controls: OverlayControls!
     private var settingsWindow: StyleSettingsPanel!
     private let styleStore = OverlayStyleStore()
+    private let launchMode = DesktopLaunchMode(arguments: ProcessInfo.processInfo.arguments)
     private var bridge: Process?
     private var shouldStop = false
     private var locked = UserDefaults.standard.bool(forKey: "overlayLocked")
@@ -38,7 +39,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
                                                name: NSApplication.didChangeScreenParametersNotification,
                                                object: nil)
         showStatus("正在等待网易云音乐…")
-        if ProcessInfo.processInfo.arguments.contains("--stdin") {
+        if launchMode == .stdin {
             observe(FileHandle.standardInput)
         } else {
             launchBridge()
@@ -258,16 +259,16 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
                 ? CGFloat(min(elapsed.saturatingSubtracting(start), end - start)) / CGFloat(end - start)
                 : 1
             content.show(primary: event.text ?? "", secondary: secondary, fraction: fraction, active: true)
-        case "unavailable": showStatus(Self.message(for: event.reason))
+        case "unavailable": showStatus(message(for: event.reason))
         default: showStatus("未知的歌词引擎状态")
         }
     }
 
-    private static func message(for reason: String?) -> String {
+    private func message(for reason: String?) -> String {
         switch reason {
         case "not_running": return "打开网易云音乐后，歌词会出现在这里"
         case "no_song": return "等待当前歌曲…"
-        case "accessibility_permission_denied": return "需要辅助功能权限：允许桌面歌词或运行它的终端"
+        case "accessibility_permission_denied": return launchMode.accessibilityPermissionStatus
         case "permission_denied": return "无法读取网易云本地播放记录：权限不足"
         case "network": return "歌词网络不可用，稍后自动重试"
         case "no_lyrics": return "当前歌曲暂无逐行歌词"

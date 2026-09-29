@@ -9,6 +9,17 @@ func near(_ actual: CGFloat, _ expected: CGFloat) -> Bool {
     abs(actual - expected) < 0.001
 }
 
+let appMode = DesktopLaunchMode(arguments: ["NeteaseDesktopLyrics"])
+check(appMode.accessibilityPermissionStatus.contains("网易云桌面歌词"),
+      "Independent app permission notice names the App")
+check(!appMode.accessibilityPermissionStatus.contains("终端"),
+      "Independent app permission notice does not ask for Terminal access")
+let stdinMode = DesktopLaunchMode(arguments: ["NeteaseDesktopLyrics", "--stdin"])
+check(stdinMode.accessibilityPermissionStatus.contains("终端"),
+      "Stdin mode permission notice names the terminal")
+check(!stdinMode.accessibilityPermissionStatus.contains("网易云桌面歌词"),
+      "Stdin mode does not ask for the independent App permission")
+
 let suite = "desktop-lyrics-appearance-tests-\(UUID().uuidString)"
 let defaults = UserDefaults(suiteName: suite)!
 defer { defaults.removePersistentDomain(forName: suite) }
