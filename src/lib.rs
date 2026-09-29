@@ -27,6 +27,8 @@ pub enum Diagnostic {
     NoSong,
     MissingDirectory,
     MissingField(&'static str),
+    ProcessQueryFailed,
+    ReadFailed,
     PermissionDenied,
     FormatChanged,
 }
