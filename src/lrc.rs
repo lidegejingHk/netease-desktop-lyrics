@@ -50,6 +50,10 @@ impl TimedLyrics {
         self.lines.is_empty()
     }
 
+    pub fn first(&self) -> Option<&ActiveLine> {
+        self.lines.first()
+    }
+
     pub fn at(&self, position_ms: u64) -> Option<&ActiveLine> {
         let index = self
             .lines

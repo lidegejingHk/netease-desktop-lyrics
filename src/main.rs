@@ -1,5 +1,7 @@
 use netease_lyrics_rs::{
     accessibility::{self, AxError},
+    lyrics::{validate_track_id, LyricsError, LyricsProvider},
+    lyrics_stream::{Event, LoadRequest, LyricsSession},
     playback::PlaybackTracker,
     process,
     reader::Reader,
@@ -7,17 +9,20 @@ use netease_lyrics_rs::{
 };
 use std::{
     env,
+    io::{self, Write},
     path::PathBuf,
+    sync::mpsc::{self, Receiver, Sender},
     thread,
     time::{Duration, Instant},
 };
 
-fn parse(args: &[String]) -> Result<(u64, u64), String> {
-    let (mut samples, mut interval) = (u64::MAX, 500);
+fn parse(args: &[String]) -> Result<(u64, u64, bool), String> {
+    let (mut samples, mut interval, mut lyrics_json) = (u64::MAX, 500, false);
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
             "--once" => samples = 1,
+            "--lyrics-json" => lyrics_json = true,
             "--samples" | "--interval-ms" => {
                 let flag = &args[i];
                 i += 1;
@@ -39,7 +44,7 @@ fn parse(args: &[String]) -> Result<(u64, u64), String> {
         }
         i += 1;
     }
-    Ok((samples, interval))
+    Ok((samples, interval, lyrics_json))
 }
 
 fn on_process_discovery_error(
@@ -111,11 +116,88 @@ fn format_snapshot(snapshot: &Snapshot, origin: Instant) -> String {
     )
 }
 
+fn report_event(event: &Event) {
+    if let Ok(json) = serde_json::to_string(event) {
+        println!("{json}");
+        let _ = io::stdout().flush();
+    }
+}
+
+fn diagnostic_reason(error: &Diagnostic) -> &'static str {
+    match error {
+        Diagnostic::NotRunning => "not_running",
+        Diagnostic::NoSong => "no_song",
+        Diagnostic::AccessibilityPermissionDenied => "accessibility_permission_denied",
+        Diagnostic::PermissionDenied => "permission_denied",
+        Diagnostic::MissingDirectory => "missing_directory",
+        Diagnostic::MissingField(_) => "missing_field",
+        Diagnostic::ProcessQueryFailed => "process_query_failed",
+        Diagnostic::ReadFailed => "read_failed",
+        Diagnostic::FormatChanged => "format_changed",
+    }
+}
+
+type LyricsResult = (
+    LoadRequest,
+    Result<netease_lyrics_rs::lrc::TimedLyrics, LyricsError>,
+);
+
+fn take_completed(session: &mut LyricsSession, receiver: &Receiver<LyricsResult>, now_ms: u64) {
+    while let Ok((request, result)) = receiver.try_recv() {
+        session.receive(&request, result, now_ms);
+    }
+}
+
+fn start_request(request: LoadRequest, sender: Sender<LyricsResult>) {
+    thread::spawn(move || {
+        let result = if let Err(error) = validate_track_id(&request.track_id) {
+            Err(error)
+        } else {
+            let mut provider = LyricsProvider::new();
+            provider.fetch(&request.track_id).cloned()
+        };
+        let _ = sender.send((request, result));
+    });
+}
+
+fn stream(
+    reader: &mut Reader,
+    tracker: &mut PlaybackTracker,
+    active_pid: &mut Option<i32>,
+    origin: Instant,
+    samples: u64,
+    interval: u64,
+) {
+    let mut session = LyricsSession::new();
+    let (sender, receiver) = mpsc::channel();
+    for index in 0..samples {
+        let snapshot = sample(reader, tracker, origin, active_pid);
+        let now_ms = origin.elapsed().as_millis() as u64;
+        match snapshot {
+            Ok(snapshot) => {
+                take_completed(&mut session, &receiver, now_ms);
+                let event = session.observe(&snapshot, now_ms);
+                report_event(&event);
+                if let Some(request) = session.take_request() {
+                    start_request(request, sender.clone());
+                }
+            }
+            Err(diagnostic) => {
+                take_completed(&mut session, &receiver, now_ms);
+                report_event(&session.unavailable(diagnostic_reason(&diagnostic)));
+            }
+        }
+        if index + 1 < samples {
+            thread::sleep(Duration::from_millis(interval));
+        }
+    }
+}
+
 fn main() {
-    let (samples, interval) = match parse(&env::args().skip(1).collect::<Vec<_>>()) {
+    let (samples, interval, lyrics_json) = match parse(&env::args().skip(1).collect::<Vec<_>>()) {
         Ok(values) => values,
         Err(error) => {
-            eprintln!("{error}\nusage: netease-lyrics-rs [--once | --samples N] [--interval-ms N]");
+            eprintln!("{error}\nusage: netease-lyrics-rs [--once | --samples N] [--interval-ms N] [--lyrics-json]");
             std::process::exit(2);
         }
     };
@@ -128,6 +210,17 @@ fn main() {
     let mut tracker = PlaybackTracker::default();
     let mut active_pid = None;
     let origin = Instant::now();
+    if lyrics_json {
+        stream(
+            &mut reader,
+            &mut tracker,
+            &mut active_pid,
+            origin,
+            samples,
+            interval,
+        );
+        return;
+    }
     for index in 0..samples {
         match sample(&mut reader, &mut tracker, origin, &mut active_pid) {
             Ok(snapshot) => println!("{}", format_snapshot(&snapshot, origin)),
@@ -146,7 +239,7 @@ mod tests {
     use std::path::PathBuf;
     #[test]
     fn arguments_are_bounded() {
-        assert_eq!(parse(&["--once".into()]).unwrap(), (1, 500));
+        assert_eq!(parse(&["--once".into()]).unwrap(), (1, 500, false));
         assert_eq!(
             parse(&[
                 "--samples".into(),
@@ -155,9 +248,13 @@ mod tests {
                 "200".into()
             ])
             .unwrap(),
-            (4, 200)
+            (4, 200, false)
         );
         assert!(parse(&["--interval-ms".into(), "0".into()]).is_err());
+        assert_eq!(
+            parse(&["--once".into(), "--lyrics-json".into()]).unwrap(),
+            (1, 500, true)
+        );
     }
 
     #[test]

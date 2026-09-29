@@ -4,6 +4,7 @@ pub mod decoder;
 pub mod leveldb_log;
 pub mod lrc;
 pub mod lyrics;
+pub mod lyrics_stream;
 pub mod playback;
 pub mod process;
 pub mod reader;
