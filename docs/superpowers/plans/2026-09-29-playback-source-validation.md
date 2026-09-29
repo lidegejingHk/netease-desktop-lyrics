@@ -273,13 +273,13 @@ pub fn inspect(data: &[u8]) -> Inspection {
             let run_start = cursor;
             while cursor < end && base64_byte(data[cursor]) { cursor += 1; }
             let run_end = cursor;
-            if run_end.saturating_sub(run_start) < 64 { continue; }
-            let max_prefix = 16.min(run_end - run_start - 64);
-            let max_suffix = 16.min(run_end - run_start - 64);
+            if run_end.saturating_sub(run_start) < 24 { continue; }
+            let max_prefix = 16.min(run_end - run_start - 24);
+            let max_suffix = 16.min(run_end - run_start - 24);
             'candidates: for prefix in 0..=max_prefix {
                 for suffix in 0..=max_suffix {
                     let part = &data[run_start + prefix..run_end - suffix];
-                    if part.len() >= 64 && part.len() % 4 == 0 {
+                    if part.len() >= 24 && part.len().is_multiple_of(4) {
                         match decode(part) {
                             Some(Payload::Valid(state)) => { out.latest = Some(state); out.missing_field = None; out.invalid_value = false; break 'candidates; }
                             Some(Payload::Missing(field)) => { out.latest = None; out.missing_field = Some(field); out.invalid_value = false; break 'candidates; }

@@ -1,3 +1,5 @@
+pub mod decoder;
+
 use std::time::Instant;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
