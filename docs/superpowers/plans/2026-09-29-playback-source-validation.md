@@ -12,7 +12,7 @@
 
 ## 执行状态（2026-09-29）
 
-Task 1–5、Task 6 的 CLI 与自动检查已完成，代码在 `feat/playback-source-validation`，未合入 `main`。现场的暂停、切歌、拖动、退出等操作仍待用户手动验收；阶段结论保持「待人工验证」。下列步骤保留原实施顺序，**审查后的实际源码和 `README.md` 优先于早期代码示例**：
+Task 1–5、Task 6 的 CLI 与自动检查已完成，代码在 `feat/playback-source-validation`，未合入 `main`。2026-09-29 用户现场验证发现：暂停时 `playing=true`，估算进度持续前进，约 6 秒后 `NoSong`；当前方案暂停验收未通过，不进入歌词同步阶段。切歌、拖动、退出等仍待测；详见 `docs/validation-checklist.md`。下列步骤保留原实施顺序，**审查后的实际源码和 `README.md` 优先于早期代码示例**：
 
 - `e147cda`：CoreAudio 部分进程状态未知时不误判暂停。
 - `c3f1e34`、`2ebfbc2`、`53bc00a`：LevelDB 按物理记录边界和 CRC32C 校验，只接受最新完整记录的可解码 `lastPlaying`；半写记录最多沿用 6 秒内的本进程已验证缓存，旧磁盘记录不会被反复刷新。
