@@ -1,6 +1,6 @@
 # 网易云 macOS 播放数据源验证 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 在本机网易云音乐 3.1.12 上，用只读 Rust CLI 验证歌曲 ID、准确播放进度、暂停状态是否可以可靠获取，并输出是否能进入歌词阶段的结论。
 
@@ -36,7 +36,7 @@
 
 **Files:** Create `Cargo.toml`, `src/lib.rs`, `src/main.rs`; modify existing `.gitignore`; generated `Cargo.lock`.
 
-- [ ] **Step 1: 建立 `Cargo.toml`，再增加失败测试。** `Cargo.toml`：
+- [x] **Step 1: 建立 `Cargo.toml`，再增加失败测试。** `Cargo.toml`：
 
 ```toml
 [package]
@@ -75,9 +75,9 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: 验证红。** `cargo test --lib` 预期 `unresolved imports Diagnostic, RawPlayback`。
+- [x] **Step 2: 验证红。** `cargo test --lib` 预期 `unresolved imports Diagnostic, RawPlayback`。
 
-- [ ] **Step 3: 用以下定义补在测试之前；创建最小入口与 ignore。** `Snapshot::estimated_position_ms` **始终独立于实测** `raw.position_ms`。
+- [x] **Step 3: 用以下定义补在测试之前；创建最小入口与 ignore。** `Snapshot::estimated_position_ms` **始终独立于实测** `raw.position_ms`。
 
 ```rust
 use std::time::Instant;
@@ -118,13 +118,13 @@ fn main() { println!("Playback probe: run cargo test first"); }
 
 应用进程和数据目录不属于仓库。
 
-- [ ] **Step 4: 验证绿及提交。** `cargo fmt --all && cargo test --lib && cargo fmt --all --check && git diff --check`；预期 1 test PASS。`git add Cargo.toml Cargo.lock .gitignore src/lib.rs src/main.rs && git commit -m "chore: bootstrap Rust playback probe"`。
+- [x] **Step 4: 验证绿及提交。** `cargo fmt --all && cargo test --lib && cargo fmt --all --check && git diff --check`；预期 1 test PASS。`git add Cargo.toml Cargo.lock .gitignore src/lib.rs src/main.rs && git commit -m "chore: bootstrap Rust playback probe"`。
 
 ### Task 2: 独立解码 `lastPlaying`
 
 **Files:** Create `src/decoder.rs`; modify `src/lib.rs`（仅新增 `pub mod decoder;`）。
 
-- [ ] **Step 1: 写失败测试。** 在 `src/decoder.rs` 增加下面这组 fixture（以测试加密，绝不提交本机真实播放记录），先跑 `cargo test --lib decoder`，预期 `inspect` 未定义。
+- [x] **Step 1: 写失败测试。** 在 `src/decoder.rs` 增加下面这组 fixture（以测试加密，绝不提交本机真实播放记录），先跑 `cargo test --lib decoder`，预期 `inspect` 未定义。
 
 ```rust
 // Fixture 使用测试本地生成的密文，禁止读取真实用户播放记录。
@@ -202,7 +202,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: 用以下完整解码单元实现 `src/decoder.rs` 的测试之前部分。** 限定 Base64 候选长度，拒绝空 ID、负值、非有限数值、解密失败。格式有变化时不返回伪记录。
+- [x] **Step 2: 用以下完整解码单元实现 `src/decoder.rs` 的测试之前部分。** 限定 Base64 候选长度，拒绝空 ID、负值、非有限数值、解密失败。格式有变化时不返回伪记录。
 
 ```rust
 use crate::RawPlayback;
@@ -295,13 +295,13 @@ pub fn inspect(data: &[u8]) -> Inspection {
 }
 ```
 
-- [ ] **Step 3: 验证绿、边界及提交。** 上述测试覆盖无效进度、缺字段、时长和最新记录损坏。运行 `cargo test --lib decoder && cargo fmt --all && cargo clippy --all-targets -- -D warnings`，期望全绿。`git add src/decoder.rs src/lib.rs && git commit -m "feat: decode Netease lastPlaying records"`。
+- [x] **Step 3: 验证绿、边界及提交。** 上述测试覆盖无效进度、缺字段、时长和最新记录损坏。运行 `cargo test --lib decoder && cargo fmt --all && cargo clippy --all-targets -- -D warnings`，期望全绿。`git add src/decoder.rs src/lib.rs && git commit -m "feat: decode Netease lastPlaying records"`。
 
 ### Task 3: 只读滚动日志读取器
 
 **Files:** Create `src/reader.rs`; modify `src/lib.rs`（新增 `pub mod reader;`）。
 
-- [ ] **Step 1: 先加失败测试**，在 `src/reader.rs` 用 `tempfile::tempdir()` 建临时 LevelDB 目录。三个断言：① `Reader::new(missing).read()` 是 `MissingDirectory`；② 写 `000001.log` 中两份 Task 2 的 fixture，取最后的 ID 和进度；③ 改名日志后，**同一进程实例**在 6 秒内沿用缓存，过期或调用 `reset()` 后只给无歌曲（`None`）。
+- [x] **Step 1: 先加失败测试**，在 `src/reader.rs` 用 `tempfile::tempdir()` 建临时 LevelDB 目录。三个断言：① `Reader::new(missing).read()` 是 `MissingDirectory`；② 写 `000001.log` 中两份 Task 2 的 fixture，取最后的 ID 和进度；③ 改名日志后，**同一进程实例**在 6 秒内沿用缓存，过期或调用 `reset()` 后只给无歌曲（`None`）。
 
 ```rust
 #[cfg(test)]
@@ -362,9 +362,9 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: 跑红** `cargo test --lib reader`；应为 `Reader` / `ReadError` 缺失。
+- [x] **Step 2: 跑红** `cargo test --lib reader`；应为 `Reader` / `ReadError` 缺失。
 
-- [ ] **Step 3: 最小实现**（把下面代码写在测试之前）。只读单文件尾部最多 128 KiB；轮转中的 NotFound 可跳过；缓存跨日志轮转最多 6 秒；完整但缺字段的新记录禁止回退旧歌；尾部半写记录保留该日志中最后一条完整记录；绝不持久化或读取旧 Container 的 `.ldb`。
+- [x] **Step 3: 最小实现**（把下面代码写在测试之前）。只读单文件尾部最多 128 KiB；轮转中的 NotFound 可跳过；缓存跨日志轮转最多 6 秒；完整但缺字段的新记录禁止回退旧歌；尾部半写记录保留该日志中最后一条完整记录；绝不持久化或读取旧 Container 的 `.ldb`。
 
 ```rust
 use crate::{decoder, RawPlayback};
@@ -442,13 +442,13 @@ fn classify(error: io::Error, directory: bool) -> ReadError {
 }
 ```
 
-- [ ] **Step 4: 测绿、提交。** `cargo test --lib reader && cargo fmt --all && cargo clippy --all-targets -- -D warnings`。实机读取验证集中在 Task 6 CLI；不得将真实 ID 写入测试夹具和 Git。`git add src/reader.rs src/lib.rs && git commit -m "feat: read current Netease LevelDB log safely"`。
+- [x] **Step 4: 测绿、提交。** `cargo test --lib reader && cargo fmt --all && cargo clippy --all-targets -- -D warnings`。实机读取验证集中在 Task 6 CLI；不得将真实 ID 写入测试夹具和 Git。`git add src/reader.rs src/lib.rs && git commit -m "feat: read current Netease LevelDB log safely"`。
 
 ### Task 4: 进程发现与 CoreAudio 播放状态
 
 **Files:** Create `src/process.rs`, `src/audio.rs`; modify `src/lib.rs`（新增 `pub mod process; pub mod audio;`）。
 
-- [ ] **Step 1: 进程解析先写失败测试**（`src/process.rs`）：模拟 `ps` 输出，主进程 + GPU Helper 应纳入，其他 App 排除。
+- [x] **Step 1: 进程解析先写失败测试**（`src/process.rs`）：模拟 `ps` 输出，主进程 + GPU Helper 应纳入，其他 App 排除。
 
 ```rust
 #[cfg(test)]
@@ -463,7 +463,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: 跑红** `cargo test --lib process`；应为 `parse_ps` 缺失。随后写实现：
+- [x] **Step 2: 跑红** `cargo test --lib process`；应为 `parse_ps` 缺失。随后写实现：
 
 ```rust
 use std::{io, process::Command};
@@ -491,7 +491,7 @@ pub fn parse_ps(text: &str) -> Vec<i32> {
 }
 ```
 
-- [ ] **Step 3: CoreAudio 小单元测试先红。** 测纯合并规则：`[None,None] → None`、`[Some(false), None] → Some(false)`、`[Some(false),Some(true)] → Some(true)`。`cargo test --lib audio` 应缺少 `merge`。
+- [x] **Step 3: CoreAudio 小单元测试先红。** 测纯合并规则：`[None,None] → None`、`[Some(false), None] → Some(false)`、`[Some(false),Some(true)] → Some(true)`。`cargo test --lib audio` 应缺少 `merge`。
 
 ```rust
 #[cfg(test)]
@@ -506,7 +506,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 4: CoreAudio 实现。** 仅 macOS 编译，原生 ABI 属性来自当前 SDK，返回 `None` 时不能推断暂停。适配本机 macOS 26.6.2；不在其他平台构建此包。`src/audio.rs` 的测试之前部分：
+- [x] **Step 4: CoreAudio 实现。** 仅 macOS 编译，原生 ABI 属性来自当前 SDK，返回 `None` 时不能推断暂停。适配本机 macOS 26.6.2；不在其他平台构建此包。`src/audio.rs` 的测试之前部分：
 
 ```rust
 use std::{ffi::c_void, mem::size_of};
@@ -556,13 +556,13 @@ pub fn is_running_output(pids: &[i32]) -> Option<bool> {
 }
 ```
 
-- [ ] **Step 5: 测绿与提交。** `cargo test --lib process && cargo test --lib audio`；接着 `cargo fmt --all && cargo clippy --all-targets -- -D warnings`。`git add src/process.rs src/audio.rs src/lib.rs && git commit -m "feat: inspect Netease audio output activity"`。现场值与真实播放对照放在 Task 6，不假设 `running output` 恒可靠。
+- [x] **Step 5: 测绿与提交。** `cargo test --lib process && cargo test --lib audio`；接着 `cargo fmt --all && cargo clippy --all-targets -- -D warnings`。`git add src/process.rs src/audio.rs src/lib.rs && git commit -m "feat: inspect Netease audio output activity"`。现场值与真实播放对照放在 Task 6，不假设 `running output` 恒可靠。
 
 ### Task 5: 独立时间模型
 
 **Files:** Create `src/timeline.rs`; modify `src/lib.rs`（新增 `pub mod timeline;`）。
 
-- [ ] **Step 1: 写失败测试**；时间直接注入毫秒，保证不需要睡眠，分别覆盖继续播放、暂停冻结、换歌、后退拖动的二次确认。
+- [x] **Step 1: 写失败测试**；时间直接注入毫秒，保证不需要睡眠，分别覆盖继续播放、暂停冻结、换歌、后退拖动的二次确认。
 
 ```rust
 #[cfg(test)]
@@ -587,7 +587,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: `cargo test --lib timeline` 红**；实现该文件测试之前部分：
+- [x] **Step 2: `cargo test --lib timeline` 红**；实现该文件测试之前部分：
 
 ```rust
 #[derive(Default)]
@@ -630,7 +630,7 @@ impl Timeline {
 }
 ```
 
-- [ ] **Step 3: 追加边界测试，验证绿与提交。** 在 `src/timeline.rs` 的 `mod tests` 中追加：
+- [x] **Step 3: 追加边界测试，验证绿与提交。** 在 `src/timeline.rs` 的 `mod tests` 中追加：
 
 ```rust
 #[test]
@@ -654,7 +654,7 @@ fn one_stale_backward_sample_does_not_seek() {
 
 **Files:** Replace `src/main.rs`; create `README.md`, `docs/validation-checklist.md`.
 
-- [ ] **Step 1: 先写 CLI 参数失败测试**，在 `src/main.rs` 末尾加 `#[cfg(test)]`：`parse(&["--once"]) == (1,500)`、`--samples 4 --interval-ms 200 == (4,200)`、`--interval-ms 0` 报错；`cargo test --bin netease-lyrics-rs` 红。
+- [x] **Step 1: 先写 CLI 参数失败测试**，在 `src/main.rs` 末尾加 `#[cfg(test)]`：`parse(&["--once"]) == (1,500)`、`--samples 4 --interval-ms 200 == (4,200)`、`--interval-ms 0` 报错；`cargo test --bin netease-lyrics-rs` 红。
 
 ```rust
 #[cfg(test)]
@@ -669,7 +669,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: 实现 CLI 参数及一次采样**，把 `src/main.rs` 测试之前内容替换为：
+- [x] **Step 2: 实现 CLI 参数及一次采样**，把 `src/main.rs` 测试之前内容替换为：
 
 ```rust
 use netease_lyrics_rs::{audio, process, reader::{ReadError, Reader}, timeline::Timeline,
@@ -760,7 +760,7 @@ fn main() {
 
 `--samples` 使用 `u64::MAX` 作为默认长期观察上限；用户按 Ctrl-C 退出。源读取或状态未知时重置时间模型，不跨诊断间隔假推进。实际交付前检查 `Snapshot` 原始与估算的列名不能混淆，格式错误和权限失败必须直接可见。若发现 App 3.1.12 返回不同 JSON 字段，不改 fixture 硬凑；先收集**字段名而非值**再修正。
 
-- [ ] **Step 3: 自动验证。** `cargo fmt --all && cargo test && cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo run -- --once`；预期自动测试通过。`--once` 实机可能是 `Ready` 或诊断，**不能**把测试环境没在播放误判为代码失败；记录诊断，不贴真实歌曲数据到仓库。
+- [x] **Step 3: 自动验证。** `cargo fmt --all && cargo test && cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo run -- --once`；预期自动测试通过。`--once` 实机可能是 `Ready` 或诊断，**不能**把测试环境没在播放误判为代码失败；记录诊断，不贴真实歌曲数据到仓库。
 
 - [ ] **Step 4: 写 `README.md`**，包含运行 `cargo run -- --samples 120 --interval-ms 500`、只读文件路径、本机支持版本、原始/估算进度定义、CoreAudio 可能误判、不得上传本机存储数据，以及 CloudLyrics-for-macOS 的 MIT 来源致谢。写 `docs/validation-checklist.md`，按下表测试并填写现场值；不得通过脚本自动控制播放器。
 
