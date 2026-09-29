@@ -107,6 +107,16 @@ let controls = OverlayControls()
 let handle = controls.panel.contentView!.subviews.first!
 check(handle.isAccessibilityElement() && handle.accessibilityRole() == .button,
       "Drag handle is exposed as an accessible control")
+func dragEvent(_ type: NSEvent.EventType, x: CGFloat, y: CGFloat) -> NSEvent {
+    NSEvent.mouseEvent(with: type, location: NSPoint(x: x, y: y), modifierFlags: [],
+                       timestamp: 0, windowNumber: controls.panel.windowNumber, context: nil,
+                       eventNumber: 0, clickCount: 1, pressure: 0)!
+}
+var dragDelta = NSPoint.zero
+controls.onDrag = { dragDelta = $0 }
+handle.mouseDown(with: dragEvent(.leftMouseDown, x: 10, y: 10))
+handle.mouseDragged(with: dragEvent(.leftMouseDragged, x: 30, y: 25))
+check(near(dragDelta.x, 20) && near(dragDelta.y, 15), "Drag uses event screen delta")
 check(!controls.panel.ignoresMouseEvents, "Toolbar is interactive by default")
 var tappedLock = 0
 var tappedSettings = 0
@@ -122,6 +132,10 @@ check(tappedLock == 1 && tappedSettings == 1 && tappedCollapse == 1,
       "Toolbar actions dispatch to their owning controller")
 controls.setLocked(true)
 check(!controls.panel.ignoresMouseEvents, "Toolbar stays interactive while lyrics lock")
+dragDelta = .zero
+handle.mouseDown(with: dragEvent(.leftMouseDown, x: 10, y: 10))
+handle.mouseDragged(with: dragEvent(.leftMouseDragged, x: 35, y: 22))
+check(near(dragDelta.x, 0) && near(dragDelta.y, 0), "Locked drag handle never moves lyrics")
 controls.setCollapsed(true)
 check(near(controls.panel.frame.width, 38), "Collapsed toolbar width")
 toolbarButtons.first(where: { $0.accessibilityLabel() == "展开歌词工具条" })!.performClick(nil)
