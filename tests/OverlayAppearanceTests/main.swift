@@ -107,16 +107,21 @@ let controls = OverlayControls()
 let handle = controls.panel.contentView!.subviews.first!
 check(handle.isAccessibilityElement() && handle.accessibilityRole() == .button,
       "Drag handle is exposed as an accessible control")
-func dragEvent(_ type: NSEvent.EventType, x: CGFloat, y: CGFloat) -> NSEvent {
-    NSEvent.mouseEvent(with: type, location: NSPoint(x: x, y: y), modifierFlags: [],
-                       timestamp: 0, windowNumber: controls.panel.windowNumber, context: nil,
-                       eventNumber: 0, clickCount: 1, pressure: 0)!
+func movementEvent(x: CGFloat, y: CGFloat, deltaX: Int64, deltaY: Int64) -> NSEvent {
+    let cgEvent = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDragged,
+                          mouseCursorPosition: CGPoint(x: x, y: y), mouseButton: .left)!
+    cgEvent.setIntegerValueField(.mouseEventDeltaX, value: deltaX)
+    cgEvent.setIntegerValueField(.mouseEventDeltaY, value: deltaY)
+    return NSEvent(cgEvent: cgEvent)!
 }
+let mouseDown = NSEvent.mouseEvent(with: .leftMouseDown, location: NSPoint(x: 10, y: 10),
+                                   modifierFlags: [], timestamp: 0, windowNumber: controls.panel.windowNumber,
+                                   context: nil, eventNumber: 0, clickCount: 1, pressure: 0)!
 var dragDelta = NSPoint.zero
 controls.onDrag = { dragDelta = $0 }
-handle.mouseDown(with: dragEvent(.leftMouseDown, x: 10, y: 10))
-handle.mouseDragged(with: dragEvent(.leftMouseDragged, x: 30, y: 25))
-check(near(dragDelta.x, 20) && near(dragDelta.y, 15), "Drag uses event screen delta")
+handle.mouseDown(with: mouseDown)
+handle.mouseDragged(with: movementEvent(x: 30, y: 25, deltaX: 20, deltaY: -15))
+check(near(dragDelta.x, 20) && near(dragDelta.y, 15), "Drag uses event delta with flipped Y")
 check(!controls.panel.ignoresMouseEvents, "Toolbar is interactive by default")
 var tappedLock = 0
 var tappedSettings = 0
@@ -133,8 +138,8 @@ check(tappedLock == 1 && tappedSettings == 1 && tappedCollapse == 1,
 controls.setLocked(true)
 check(!controls.panel.ignoresMouseEvents, "Toolbar stays interactive while lyrics lock")
 dragDelta = .zero
-handle.mouseDown(with: dragEvent(.leftMouseDown, x: 10, y: 10))
-handle.mouseDragged(with: dragEvent(.leftMouseDragged, x: 35, y: 22))
+handle.mouseDown(with: mouseDown)
+handle.mouseDragged(with: movementEvent(x: 35, y: 22, deltaX: 25, deltaY: -12))
 check(near(dragDelta.x, 0) && near(dragDelta.y, 0), "Locked drag handle never moves lyrics")
 controls.setCollapsed(true)
 check(near(controls.panel.frame.width, 38), "Collapsed toolbar width")
@@ -146,6 +151,22 @@ controls.follow(overlay: NSRect(x: 100, y: 100, width: 760, height: 112),
                 visibleFrames: [screen])
 check(near(controls.panel.frame.origin.x, 694) && near(controls.panel.frame.origin.y, 220),
       "Interactive toolbar follows the lyric panel")
+
+controls.setLocked(false)
+var overlayForDrag = NSRect(x: 100, y: 100, width: 760, height: 112)
+controls.onDrag = { delta in
+    overlayForDrag.origin.x += delta.x
+    overlayForDrag.origin.y += delta.y
+    controls.follow(overlay: overlayForDrag, visibleFrames: [screen])
+}
+// Construct both events before the first callback moves the toolbar: queued events must not double-count it.
+let queuedA = movementEvent(x: 140, y: 290, deltaX: 20, deltaY: -15)
+let queuedB = movementEvent(x: 155, y: 300, deltaX: 15, deltaY: 10)
+handle.mouseDown(with: mouseDown)
+handle.mouseDragged(with: queuedA)
+handle.mouseDragged(with: queuedB)
+check(near(overlayForDrag.minX, 135) && near(overlayForDrag.minY, 105),
+      "Queued drag events move by their independent deltas, not moving-window coordinates")
 
 let lyricView = LyricsView(frame: NSRect(x: 0, y: 0, width: 760, height: 112))
 lyricView.applyStyle(OverlayStyle(backgroundRGB: "#123456", textRGB: "#F0E0D0", chipRGB: "#112233",

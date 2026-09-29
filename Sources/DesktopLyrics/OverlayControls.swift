@@ -124,7 +124,6 @@ private final class OverlayDragHandle: NSView {
         didSet { glyph.textColor = .white.withAlphaComponent(isLocked ? 0.32 : 0.92) }
     }
     private let glyph = NSTextField(labelWithString: "✥")
-    private var previousMouseLocation = NSPoint.zero
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -147,20 +146,13 @@ private final class OverlayDragHandle: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        guard !isLocked else { return }
-        previousMouseLocation = screenPoint(for: event)
+        // Keep drag events bound to this handle; no window-relative coordinates are cached.
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard !isLocked else { return }
-        let current = screenPoint(for: event)
-        let delta = NSPoint(x: current.x - previousMouseLocation.x,
-                            y: current.y - previousMouseLocation.y)
-        previousMouseLocation = current
-        onDrag?(delta)
-    }
-
-    private func screenPoint(for event: NSEvent) -> NSPoint {
-        window?.convertPoint(toScreen: event.locationInWindow) ?? NSEvent.mouseLocation
+        // NSEvent deltas are independent of our toolbar moving after each callback.
+        // Device-space Y is flipped relative to AppKit window coordinates.
+        onDrag?(NSPoint(x: event.deltaX, y: -event.deltaY))
     }
 }
