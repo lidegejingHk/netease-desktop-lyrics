@@ -75,8 +75,9 @@ struct OverlayStyleStore {
     }
 
     private func opacity(_ name: String, fallback: Double) -> Double {
-        guard let value = defaults.object(forKey: prefix + name) as? Double else { return fallback }
-        return Self.validOpacity(value, fallback: fallback)
+        guard let number = defaults.object(forKey: prefix + name) as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID() else { return fallback }
+        return Self.validOpacity(number.doubleValue, fallback: fallback)
     }
 
     private static func validColor(_ value: String, fallback: String) -> String {
