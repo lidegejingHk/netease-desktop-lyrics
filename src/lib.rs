@@ -21,6 +21,7 @@ pub struct Snapshot {
     pub raw: RawPlayback,
     pub estimated_position_ms: u64,
     pub is_playing: bool,
+    pub held_paused: bool,
     pub observed_at: Instant,
 }
 

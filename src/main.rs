@@ -1,7 +1,8 @@
 use netease_lyrics_rs::{
-    audio, process,
-    reader::{ReadError, Reader},
-    timeline::Timeline,
+    accessibility::{self, AxError},
+    playback::PlaybackTracker,
+    process,
+    reader::Reader,
     Diagnostic, Snapshot,
 };
 use std::{
@@ -43,72 +44,71 @@ fn parse(args: &[String]) -> Result<(u64, u64), String> {
 
 fn on_process_discovery_error(
     reader: &mut Reader,
-    timeline: &mut Timeline,
+    tracker: &mut PlaybackTracker,
     active_pid: &mut Option<i32>,
 ) -> Diagnostic {
     *active_pid = None;
     reader.reset();
-    timeline.reset();
+    tracker.reset();
     Diagnostic::ProcessQueryFailed
 }
 
-fn reader_diagnostic(error: ReadError) -> Diagnostic {
+fn ax_diagnostic(error: AxError) -> Diagnostic {
     match error {
-        ReadError::MissingDirectory => Diagnostic::MissingDirectory,
-        ReadError::MissingField(field) => Diagnostic::MissingField(field),
-        ReadError::PermissionDenied => Diagnostic::PermissionDenied,
-        ReadError::FormatChanged => Diagnostic::FormatChanged,
-        ReadError::Io(_) => Diagnostic::ReadFailed,
+        AxError::PermissionDenied => Diagnostic::AccessibilityPermissionDenied,
+        AxError::Unavailable => Diagnostic::MissingField("is_playing"),
     }
 }
 
 fn sample(
     reader: &mut Reader,
-    timeline: &mut Timeline,
+    tracker: &mut PlaybackTracker,
     origin: Instant,
     active_pid: &mut Option<i32>,
 ) -> Result<Snapshot, Diagnostic> {
-    let pids = process::discover()
-        .map_err(|_| on_process_discovery_error(reader, timeline, active_pid))?;
+    let pids =
+        process::discover().map_err(|_| on_process_discovery_error(reader, tracker, active_pid))?;
     let Some(&pid) = pids.first() else {
         *active_pid = None;
         reader.reset();
-        timeline.reset();
+        tracker.reset();
         return Err(Diagnostic::NotRunning);
     };
     if *active_pid != Some(pid) {
         *active_pid = Some(pid);
         reader.reset();
-        timeline.reset();
+        tracker.set_pid(pid);
     }
-    let raw = match reader.read() {
-        Ok(Some(raw)) => raw,
-        Ok(None) => {
-            timeline.reset();
-            return Err(Diagnostic::NoSong);
-        }
-        Err(error) => {
-            timeline.reset();
-            return Err(reader_diagnostic(error));
-        }
-    };
-    let Some(is_playing) = audio::is_running_output(&pids) else {
-        timeline.reset();
-        return Err(Diagnostic::MissingField("is_playing"));
-    };
+    let state = accessibility::playback_state(pid).map_err(|error| {
+        tracker.reset();
+        ax_diagnostic(error)
+    })?;
+    let observed = reader.read_observation();
     let observed_at = Instant::now();
-    let estimated_position_ms = timeline.update(
-        &raw.track_id,
-        raw.position_ms,
-        is_playing,
+    let update = tracker.update(
+        state,
+        observed,
         observed_at.duration_since(origin).as_millis() as u64,
-    );
+    )?;
     Ok(Snapshot {
-        raw,
-        estimated_position_ms,
-        is_playing,
+        raw: update.raw,
+        estimated_position_ms: update.estimated_position_ms,
+        is_playing: update.is_playing,
+        held_paused: update.held_paused,
         observed_at,
     })
+}
+
+fn format_snapshot(snapshot: &Snapshot, origin: Instant) -> String {
+    format!(
+        "track={} raw_ms={} estimated_ms={} playing={} held_paused={} observed_t+{}ms",
+        snapshot.raw.track_id,
+        snapshot.raw.position_ms,
+        snapshot.estimated_position_ms,
+        snapshot.is_playing,
+        snapshot.held_paused,
+        snapshot.observed_at.duration_since(origin).as_millis()
+    )
 }
 
 fn main() {
@@ -125,19 +125,12 @@ fn main() {
     };
     let path = PathBuf::from(home).join("Library/Application Support/com.netease.163music/Documents/storage/CEFCache/Local Storage/leveldb");
     let mut reader = Reader::new(path);
-    let mut timeline = Timeline::default();
+    let mut tracker = PlaybackTracker::default();
     let mut active_pid = None;
     let origin = Instant::now();
     for index in 0..samples {
-        match sample(&mut reader, &mut timeline, origin, &mut active_pid) {
-            Ok(snapshot) => println!(
-                "track={} raw_ms={} estimated_ms={} playing={} observed_t+{}ms",
-                snapshot.raw.track_id,
-                snapshot.raw.position_ms,
-                snapshot.estimated_position_ms,
-                snapshot.is_playing,
-                snapshot.observed_at.duration_since(origin).as_millis()
-            ),
+        match sample(&mut reader, &mut tracker, origin, &mut active_pid) {
+            Ok(snapshot) => println!("{}", format_snapshot(&snapshot, origin)),
             Err(diagnostic) => println!("unavailable: {diagnostic:?}"),
         }
         if index + 1 < samples {
@@ -148,12 +141,8 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{on_process_discovery_error, parse, reader_diagnostic};
-    use netease_lyrics_rs::{
-        reader::{ReadError, Reader},
-        timeline::Timeline,
-        Diagnostic,
-    };
+    use super::{on_process_discovery_error, parse};
+    use netease_lyrics_rs::{playback::PlaybackTracker, reader::Reader, Diagnostic};
     use std::path::PathBuf;
     #[test]
     fn arguments_are_bounded() {
@@ -172,22 +161,69 @@ mod tests {
     }
 
     #[test]
-    fn io_failure_is_not_a_missing_playback_field() {
-        let error = ReadError::Io(std::io::Error::other("test read failure"));
-        assert_eq!(reader_diagnostic(error), Diagnostic::ReadFailed);
+    fn ax_permission_is_not_a_generic_read_error() {
+        assert_eq!(
+            super::ax_diagnostic(netease_lyrics_rs::accessibility::AxError::PermissionDenied),
+            Diagnostic::AccessibilityPermissionDenied
+        );
+        assert_eq!(
+            super::ax_diagnostic(netease_lyrics_rs::accessibility::AxError::Unavailable),
+            Diagnostic::MissingField("is_playing")
+        );
+    }
+
+    #[test]
+    fn paused_line_discloses_held_observation() {
+        let snapshot = netease_lyrics_rs::Snapshot {
+            raw: netease_lyrics_rs::RawPlayback {
+                track_id: "fixture-id".into(),
+                position_ms: 1_000,
+                duration_ms: None,
+            },
+            estimated_position_ms: 1_000,
+            is_playing: false,
+            held_paused: true,
+            observed_at: std::time::Instant::now(),
+        };
+        let line = super::format_snapshot(&snapshot, snapshot.observed_at);
+        assert!(line.contains("playing=false"));
+        assert!(line.contains("held_paused=true"));
     }
 
     #[test]
     fn process_query_failure_resets_old_timeline_and_pid() {
         let mut reader = Reader::new(PathBuf::from("unused"));
-        let mut timeline = Timeline::default();
+        let mut tracker = PlaybackTracker::default();
         let mut active_pid = Some(42);
-        timeline.update("a", 1_000, true, 0);
+        tracker.set_pid(42);
+        tracker
+            .update(
+                netease_lyrics_rs::accessibility::PlaybackState::Playing,
+                Ok(Some(netease_lyrics_rs::reader::ReadObservation {
+                    raw: netease_lyrics_rs::RawPlayback {
+                        track_id: "a".into(),
+                        position_ms: 1_000,
+                        duration_ms: None,
+                    },
+                    fresh: true,
+                })),
+                0,
+            )
+            .unwrap();
         assert_eq!(
-            on_process_discovery_error(&mut reader, &mut timeline, &mut active_pid),
+            on_process_discovery_error(&mut reader, &mut tracker, &mut active_pid),
             Diagnostic::ProcessQueryFailed
         );
         assert_eq!(active_pid, None);
-        assert_eq!(timeline.update("a", 1_000, true, 5_000), 1_000);
+        assert_eq!(
+            tracker
+                .update(
+                    netease_lyrics_rs::accessibility::PlaybackState::PausedOrIdle,
+                    Ok(None),
+                    5_000,
+                )
+                .unwrap_err(),
+            Diagnostic::NoSong
+        );
     }
 }
