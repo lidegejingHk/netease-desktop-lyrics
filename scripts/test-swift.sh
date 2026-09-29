@@ -6,6 +6,7 @@ trap 'rm -rf "$temporary"' EXIT
 xcrun swiftc -warnings-as-errors -framework AppKit -framework Foundation \
   "$root/Sources/DesktopLyrics/OverlayStyle.swift" \
   "$root/Sources/DesktopLyrics/ToolbarPlacement.swift" \
+  "$root/Sources/DesktopLyrics/OverlayVisibility.swift" \
   "$root/tests/OverlayAppearanceTests/main.swift" \
   -o "$temporary/overlay-appearance-tests"
 "$temporary/overlay-appearance-tests"

@@ -112,6 +112,10 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     func windowDidChangeScreen(_ notification: Notification) { updateControlsPosition() }
 
     @objc private func screenParametersChanged(_ notification: Notification) {
+        guard panel != nil else { return }
+        let origin = OverlayVisibility.origin(for: panel.frame,
+                                              visibleFrames: NSScreen.screens.map(\.visibleFrame))
+        if origin != panel.frame.origin { panel.setFrameOrigin(origin) }
         updateControlsPosition()
     }
 
