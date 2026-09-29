@@ -10,6 +10,14 @@
 
 ---
 
+## 执行状态（2026-09-29）
+
+Task 1–5、Task 6 的 CLI 与自动检查已完成，代码在 `feat/playback-source-validation`，未合入 `main`。现场的暂停、切歌、拖动、退出等操作仍待用户手动验收；阶段结论保持「待人工验证」。下列步骤保留原实施顺序，**审查后的实际源码和 `README.md` 优先于早期代码示例**：
+
+- `e147cda`：CoreAudio 部分进程状态未知时不误判暂停。
+- `c3f1e34`、`2ebfbc2`、`53bc00a`：LevelDB 按物理记录边界和 CRC32C 校验，只接受最新完整记录的可解码 `lastPlaying`；半写记录最多沿用 6 秒内的本进程已验证缓存，旧磁盘记录不会被反复刷新。
+- 最终 `cargo test` 41 项通过；`cargo fmt --all --check`、`cargo clippy --all-targets -- -D warnings` 通过。当前只读实机采样为 `NoSong`（播放器进程在运行，但最新日志记录并非 `lastPlaying`），未证明最新版正在播放时可完整同步。
+
 ## 范围、实际探测及停机条件
 
 项目根目录：`/Users/linjingheng/netease-lyrics-rs`。设计文档：`docs/superpowers/specs/2026-09-29-netease-macos-lyrics-design.md`。本阶段仅实现本机已实测存在的主路径：`~/Library/Application Support/com.netease.163music/Documents/storage/CEFCache/Local Storage/leveldb/*.log`；2026-09-29 探测到滚动日志持续更新，包含 `lastPlaying` 标记。另有 `playingList` 可在后续阶段补充标题，但本阶段唯一标识以解密后的 `resourceId` / `trackId` 为准；原来的 `~/Library/Containers/...` 目录在本机为旧数据，不可当成当前源。不能把 LevelDB `.ldb` 中的历史快照当成当前歌曲。`lastPlaying` 可能在未播放时仍保留上次歌曲；本阶段不能由文件存在推断正在播放，须人工验证启动后空闲状态。
