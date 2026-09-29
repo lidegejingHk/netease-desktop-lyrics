@@ -20,15 +20,23 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private var statusItem: NSStatusItem!
     private var toggleItem: NSMenuItem!
     private var lockItem: NSMenuItem!
+    private var controls: OverlayControls!
+    private var settingsWindow: StyleSettingsPanel!
+    private let styleStore = OverlayStyleStore()
     private var bridge: Process?
     private var shouldStop = false
     private var locked = UserDefaults.standard.bool(forKey: "overlayLocked")
     private var showing = UserDefaults.standard.object(forKey: "overlayShowing") as? Bool ?? true
+    private var collapsed = UserDefaults.standard.bool(forKey: "toolbarCollapsed")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         configureWindow()
+        configureControls()
         configureMenu()
+        NotificationCenter.default.addObserver(self, selector: #selector(screenParametersChanged(_:)),
+                                               name: NSApplication.didChangeScreenParametersNotification,
+                                               object: nil)
         showStatus("正在等待网易云音乐…")
         if ProcessInfo.processInfo.arguments.contains("--stdin") {
             observe(FileHandle.standardInput)
@@ -50,12 +58,15 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         panel.ignoresMouseEvents = locked
         panel.delegate = self
         content = LyricsView(frame: frame)
+        content.applyStyle(styleStore.load())
         panel.contentView = content
         if let point = UserDefaults.standard.dictionary(forKey: "overlayOrigin"),
            let x = point["x"] as? Double, let y = point["y"] as? Double,
            x.isFinite, y.isFinite, let screen = NSScreen.screens.first(where: { $0.frame.contains(NSPoint(x: x, y: y)) }) {
-            let validX = min(max(x, screen.visibleFrame.minX), screen.visibleFrame.maxX - frame.width)
-            let validY = min(max(y, screen.visibleFrame.minY), screen.visibleFrame.maxY - frame.height)
+            let validX = min(max(x, screen.visibleFrame.minX),
+                             max(screen.visibleFrame.minX, screen.visibleFrame.maxX - frame.width))
+            let validY = min(max(y, screen.visibleFrame.minY),
+                             max(screen.visibleFrame.minY, screen.visibleFrame.maxY - frame.height))
             panel.setFrameOrigin(NSPoint(x: validX, y: validY))
         } else if let screen = NSScreen.main {
             let area = screen.visibleFrame
@@ -66,9 +77,42 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         if showing { panel.orderFrontRegardless() }
     }
 
+    private func configureControls() {
+        controls = OverlayControls()
+        controls.setLocked(locked)
+        controls.setCollapsed(collapsed)
+        controls.onDrag = { [weak self] delta in
+            guard let self, !self.locked else { return }
+            self.panel.setFrameOrigin(NSPoint(x: self.panel.frame.minX + delta.x,
+                                               y: self.panel.frame.minY + delta.y))
+        }
+        controls.onToggleLock = { [weak self] in self?.changeLock() }
+        controls.onToggleCollapsed = { [weak self] in self?.changeCollapsed() }
+        controls.onToggleSettings = { [weak self] in self?.showOrHideSettings() }
+        settingsWindow = StyleSettingsPanel(style: styleStore.load())
+        settingsWindow.onStyleChange = { [weak self] style in
+            self?.styleStore.save(style)
+            self?.content.applyStyle(style)
+        }
+        updateControlsPosition()
+        if showing { controls.setVisible(true) }
+    }
+
+    private func updateControlsPosition() {
+        guard let controls, let panel else { return }
+        controls.follow(overlay: panel.frame, visibleFrames: NSScreen.screens.map(\.visibleFrame))
+    }
+
     func windowDidMove(_ notification: Notification) {
         guard panel != nil else { return }
         UserDefaults.standard.set(["x": Double(panel.frame.minX), "y": Double(panel.frame.minY)], forKey: "overlayOrigin")
+        updateControlsPosition()
+    }
+
+    func windowDidChangeScreen(_ notification: Notification) { updateControlsPosition() }
+
+    @objc private func screenParametersChanged(_ notification: Notification) {
+        updateControlsPosition()
     }
 
     private func configureMenu() {
@@ -84,6 +128,9 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         lockItem = NSMenuItem(title: locked ? "解锁位置（可拖动）" : "锁定位置（点击穿透）", action: #selector(toggleLock(_:)), keyEquivalent: "")
         lockItem.target = self
         menu.addItem(lockItem)
+        let settings = NSMenuItem(title: "歌词样式…", action: #selector(toggleSettings(_:)), keyEquivalent: "")
+        settings.target = self
+        menu.addItem(settings)
         menu.addItem(.separator())
         let permission = NSMenuItem(title: "打开辅助功能设置…", action: #selector(openAccessibility(_:)), keyEquivalent: "")
         permission.target = self
@@ -98,15 +145,38 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     @objc private func toggleVisible(_ sender: NSMenuItem) {
         showing.toggle()
         if showing { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
+        controls.setVisible(showing)
+        if !showing { settingsWindow.close() }
         UserDefaults.standard.set(showing, forKey: "overlayShowing")
         toggleItem.title = showing ? "隐藏歌词" : "显示歌词"
     }
 
-    @objc private func toggleLock(_ sender: NSMenuItem) {
+    @objc private func toggleLock(_ sender: NSMenuItem) { changeLock() }
+
+    private func changeLock() {
         locked.toggle()
         panel.ignoresMouseEvents = locked
+        controls.setLocked(locked)
         UserDefaults.standard.set(locked, forKey: "overlayLocked")
         lockItem.title = locked ? "解锁位置（可拖动）" : "锁定位置（点击穿透）"
+    }
+
+    private func changeCollapsed() {
+        collapsed.toggle()
+        controls.setCollapsed(collapsed)
+        UserDefaults.standard.set(collapsed, forKey: "toolbarCollapsed")
+    }
+
+    @objc private func toggleSettings(_ sender: NSMenuItem) { showOrHideSettings() }
+
+    private func showOrHideSettings() {
+        guard settingsWindow != nil else { return }
+        if settingsWindow.isVisible {
+            settingsWindow.close()
+        } else {
+            settingsWindow.show(near: controls.panel.frame,
+                                visibleFrames: NSScreen.screens.map(\.visibleFrame))
+        }
     }
 
     @objc private func openAccessibility(_ sender: NSMenuItem) {
@@ -206,10 +276,11 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     }
 
     private func showStatus(_ message: String) {
-        content.show(primary: message, secondary: "菜单栏 ♫ · 拖动位置 · 锁定后点击穿透", fraction: 0, active: false)
+        content.show(primary: message, secondary: "附近工具条可拖动、锁定并设置颜色与透明度", fraction: 0, active: false)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        NotificationCenter.default.removeObserver(self)
         shouldStop = true
         if let bridge, bridge.isRunning { bridge.terminate() }
     }
