@@ -19,6 +19,13 @@ pub enum ReadError {
     Io(io::Error),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReadObservation {
+    pub raw: RawPlayback,
+    /// True only when a newly observed complete `lastPlaying` record was verified.
+    pub fresh: bool,
+}
+
 #[derive(PartialEq, Eq)]
 struct RecordKey {
     path: PathBuf,
@@ -48,9 +55,12 @@ impl Reader {
         self.last_seen = None;
     }
 
-    fn recent_cache(&mut self) -> Option<RawPlayback> {
+    fn recent_cache(&mut self) -> Option<ReadObservation> {
         if self.cached_at.is_some_and(|at| at.elapsed() <= FRESHNESS) {
-            return self.cached.clone();
+            return self
+                .cached
+                .clone()
+                .map(|raw| ReadObservation { raw, fresh: false });
         }
         self.cached = None;
         self.cached_at = None;
@@ -59,6 +69,11 @@ impl Reader {
     }
 
     pub fn read(&mut self) -> Result<Option<RawPlayback>, ReadError> {
+        self.read_observation()
+            .map(|observation| observation.map(|observed| observed.raw))
+    }
+
+    pub fn read_observation(&mut self) -> Result<Option<ReadObservation>, ReadError> {
         let entries = fs::read_dir(&self.dir).map_err(|error| classify(error, true))?;
         let mut logs = Vec::new();
         for entry in entries {
@@ -116,7 +131,7 @@ impl Reader {
             }
             self.cached = Some(raw.clone());
             self.cached_at = Some(Instant::now());
-            return Ok(Some(raw));
+            return Ok(Some(ReadObservation { raw, fresh: true }));
         }
         Ok(self.recent_cache())
     }
@@ -173,6 +188,25 @@ mod tests {
         fs::set_permissions(dir.path(), original).unwrap();
         assert!(matches!(result, Err(ReadError::PermissionDenied)));
     }
+    #[test]
+    fn fresh_record_is_distinct_from_a_reused_recent_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("1.log"),
+            fixture_record(1, &fixture("a", 1.0)),
+        )
+        .unwrap();
+        let mut reader = Reader::new(dir.path().to_path_buf());
+        let first = reader.read_observation().unwrap().unwrap();
+        assert_eq!(first.raw.track_id, "a");
+        assert!(first.fresh);
+        let second = reader.read_observation().unwrap().unwrap();
+        assert_eq!(second.raw, first.raw);
+        assert!(!second.fresh);
+        reader.cached_at = Some(std::time::Instant::now() - std::time::Duration::from_secs(10));
+        assert!(reader.read_observation().unwrap().is_none());
+    }
+
     #[test]
     fn last_log_record_wins_and_reset_drops_stale_track() {
         let dir = tempfile::tempdir().unwrap();
