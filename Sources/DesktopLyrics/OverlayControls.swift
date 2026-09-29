@@ -148,15 +148,19 @@ private final class OverlayDragHandle: NSView {
 
     override func mouseDown(with event: NSEvent) {
         guard !isLocked else { return }
-        previousMouseLocation = NSEvent.mouseLocation
+        previousMouseLocation = screenPoint(for: event)
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard !isLocked else { return }
-        let current = NSEvent.mouseLocation
+        let current = screenPoint(for: event)
         let delta = NSPoint(x: current.x - previousMouseLocation.x,
                             y: current.y - previousMouseLocation.y)
         previousMouseLocation = current
         onDrag?(delta)
+    }
+
+    private func screenPoint(for event: NSEvent) -> NSPoint {
+        window?.convertPoint(toScreen: event.locationInWindow) ?? NSEvent.mouseLocation
     }
 }
