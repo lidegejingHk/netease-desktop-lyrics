@@ -12,6 +12,7 @@ pub struct Inspection {
     pub latest: Option<RawPlayback>,
     pub missing_field: Option<&'static str>,
     pub invalid_value: bool,
+    pub undecodable_latest: bool,
 }
 
 enum Payload {
@@ -76,12 +77,14 @@ pub fn inspect(data: &[u8]) -> Inspection {
         latest: None,
         missing_field: None,
         invalid_value: false,
+        undecodable_latest: false,
     };
     for (at, bytes) in data.windows(MARKER.len()).enumerate() {
         if bytes != MARKER {
             continue;
         }
         out.marker_found = true;
+        let mut found_payload = false;
         let start = at + MARKER.len();
         let end = data.len().min(start + 1_024);
         let mut cursor = start;
@@ -109,18 +112,21 @@ pub fn inspect(data: &[u8]) -> Inspection {
                                 out.latest = Some(state);
                                 out.missing_field = None;
                                 out.invalid_value = false;
+                                found_payload = true;
                                 break 'candidates;
                             }
                             Some(Payload::Missing(field)) => {
                                 out.latest = None;
                                 out.missing_field = Some(field);
                                 out.invalid_value = false;
+                                found_payload = true;
                                 break 'candidates;
                             }
                             Some(Payload::Invalid) => {
                                 out.latest = None;
                                 out.missing_field = None;
                                 out.invalid_value = true;
+                                found_payload = true;
                                 break 'candidates;
                             }
                             None => {}
@@ -128,6 +134,12 @@ pub fn inspect(data: &[u8]) -> Inspection {
                     }
                 }
             }
+        }
+        out.undecodable_latest = !found_payload;
+        if out.undecodable_latest {
+            out.latest = None;
+            out.missing_field = None;
+            out.invalid_value = false;
         }
     }
     out
@@ -196,10 +208,12 @@ mod tests {
         assert!(bad.latest.is_none());
     }
     #[test]
-    fn incomplete_tail_keeps_last_verified_record() {
+    fn complete_undecodable_marker_blocks_old_song() {
         let mut log = fixture("11", 1.0);
         log.extend_from_slice(b"lastPlaying\x00not-base64\x00");
-        assert_eq!(inspect(&log).latest.unwrap().track_id, "11");
+        let result = inspect(&log);
+        assert!(result.latest.is_none());
+        assert!(result.undecodable_latest);
     }
     #[test]
     fn missing_required_field_in_latest_record_blocks_old_song() {
