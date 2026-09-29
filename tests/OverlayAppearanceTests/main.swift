@@ -27,7 +27,7 @@ edited.textRGB = "#F0E0D0"
 edited.chipRGB = "#345678"
 edited.chipOpacity = 0.6
 store.save(edited)
-let restored = store.load()
+let restored = OverlayStyleStore(defaults: defaults).load()
 check(restored.backgroundRGB == "#12AB34", "Normalized hex roundtrip")
 check(restored.backgroundOpacity == 0.25, "Background opacity roundtrip")
 check(restored.textRGB == "#F0E0D0", "Text color roundtrip")
@@ -96,5 +96,40 @@ let isolated = ToolbarPlacement.origin(
 )
 check(isolated.x >= secondScreen.minX && isolated.x + size.width <= secondScreen.maxX,
       "Fallback position remains on a visible display")
+
+let _ = NSApplication.shared
+let controls = OverlayControls()
+check(!controls.panel.ignoresMouseEvents, "Toolbar is interactive by default")
+controls.setLocked(true)
+check(!controls.panel.ignoresMouseEvents, "Toolbar stays interactive while lyrics lock")
+controls.setCollapsed(true)
+check(near(controls.panel.frame.width, 38), "Collapsed toolbar width")
+controls.setCollapsed(false)
+check(near(controls.panel.frame.width, 166), "Restored toolbar width")
+controls.follow(overlay: NSRect(x: 100, y: 100, width: 760, height: 112),
+                visibleFrames: [screen])
+check(near(controls.panel.frame.origin.x, 694) && near(controls.panel.frame.origin.y, 220),
+      "Interactive toolbar follows the lyric panel")
+
+let lyricView = LyricsView(frame: NSRect(x: 0, y: 0, width: 760, height: 112))
+lyricView.applyStyle(OverlayStyle(backgroundRGB: "#123456", textRGB: "#F0E0D0", chipRGB: "#112233",
+                                  backgroundOpacity: 0.15, chipOpacity: 0.55))
+lyricView.show(primary: "合成歌词", secondary: "合成副句", fraction: 0.5, active: true)
+lyricView.layout()
+check(near(lyricView.layer!.backgroundColor!.alpha, 0.15), "Live background alpha")
+check(!lyricView.subviews[0].isHidden && !lyricView.subviews[1].isHidden,
+      "Text-sized chip views appear for both lines")
+check(near(lyricView.subviews[0].layer!.backgroundColor!.alpha, 0.55), "Live chip alpha")
+lyricView.applyStyle(.defaultValue)
+lyricView.layout()
+check(lyricView.subviews[0].isHidden && lyricView.subviews[1].isHidden,
+      "Default text background is fully transparent")
+
+let settings = StyleSettingsPanel(style: .defaultValue)
+let wells = settings.panel.contentView!.subviews.compactMap { $0 as? NSColorWell }
+let sliders = settings.panel.contentView!.subviews.compactMap { $0 as? NSSlider }
+check(wells.count == 3 && sliders.count == 2, "Color and opacity controls are present")
+check(sliders.contains(where: { $0.accessibilityLabel() == "浮层背景不透明度" }),
+      "Opacity labels describe the actual slider semantics")
 
 print("Overlay appearance: all assertions passed")
