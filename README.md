@@ -1,44 +1,39 @@
-# 网易云音乐 macOS 播放状态探针
+# 网易云音乐 macOS 桌面歌词
 
-Rust 只读 CLI。当前阶段验证网易云 Mac 客户端的歌曲标识、播放位置与播放/暂停状态；**还没有歌词展示、悬浮窗，也不控制播放器**。
+本地可运行的桌面歌词 MVP：**Rust** 只读识别网易云音乐的当前歌曲、播放位置和播放/暂停状态，获取并同步逐行歌词；**Swift/AppKit** 仅负责菜单栏与桌面浮层。不会注入或控制网易云音乐。
 
-## 运行与权限
+在 Apple Silicon、macOS **26.6.2**、网易云音乐 `com.netease.163music` **3.1.12** 上验证。网易云内部格式、菜单及歌词接口均非公开稳定 API，其他客户端版本须重新验收。
 
-已在 Apple Silicon / macOS **26.6.2**、网易云音乐 `com.netease.163music` **3.1.12** 上实测。其他版本须重新验证。
+## 直接运行（推荐）
 
-macOS「系统设置 → 隐私与安全性 → 辅助功能」需允许运行本程序的终端（或正式 App）。CLI 不会主动弹授权框、点击菜单或修改系统设置。未授权时输出 `AccessibilityPermissionDenied`；菜单不可读取时输出 `MissingField("is_playing")`，不回退到 CoreAudio 猜测。
+需要本机安装 Rust/Cargo、Apple Command Line Tools（`xcrun swiftc`）、网易云音乐，并联网。先在「系统设置 → 隐私与安全性 → 辅助功能」中允许**用于运行命令的终端**；本程序不会代替你开启权限。
+
+```bash
+./scripts/run-desktop.sh
+```
+
+首次运行会在 `dist/` 中构建应用；后续直接从该目录启动，直到你手动重新构建。浮层默认出现在屏幕下方。菜单栏的音符图标提供显示/隐藏、位置锁定/解锁、打开辅助功能设置和退出；未锁定时可拖动浮层，锁定后点击穿透。显示、锁定和位置偏好保存在本机 App 的用户设置，不保存播放记录。退出菜单或在命令所在终端按 `Ctrl-C` 结束。代码改动后请先运行 `./scripts/build-app.sh`，**不要在应用运行时重新构建**。
+
+## 独立 App
+
+```bash
+./scripts/build-app.sh
+open "dist/网易云桌面歌词.app"
+```
+
+也可以在 Finder 双击 `dist/网易云桌面歌词.app`。此模式由 App 启动自带的 Rust 引擎，**不会借用终端的辅助功能授权**；首次启动若显示“需要辅助功能权限”，在系统设置中允许此 App（以系统实际列出的项目为准），退出并重新打开。当前机器尚未为独立 App 授权，因此只实测了其权限提示和子进程启动；可立即使用的已验证路径是上面的终端脚本。构建脚本使用本机 ad-hoc 签名，非公证/商店分发；保持 App 路径固定，重建或移动后如权限失效需重新核查系统设置。
+
+## 诊断与隐私
 
 ```bash
 cargo test
 cargo run -- --once
 cargo run -- --samples 120 --interval-ms 500
+cargo run -- --lyrics-json --once
 ```
 
-不传参数则持续每 500 ms 采样；按 `Ctrl-C` 结束。输出示例（标识为示意值）：
+不传参数则每 500 ms 持续采样。普通 CLI 输出歌曲 ID、原始位置 `raw_ms`、估算位置 `estimated_ms`、`playing`、`held_paused`；**普通 CLI 可能显示真实歌曲 ID，不要上传输出**。JSON 行流只包含当前歌词、播放标记、相对位置与短状态码，不含歌曲 ID 或原始日志；它本身仍会显示歌词，亦请勿分享真实输出。`raw_ms` 是最近一次本地记录，不一定实时；`estimated_ms` 用单调时钟估算，暂停时冻结；`held_paused=true` 表示沿用同一进程内此前核验过的观测，不是新采样。
 
-```text
-track=example-id raw_ms=148000 estimated_ms=148561 playing=true held_paused=false observed_t+720ms
-```
+歌词由数字歌曲 ID 向网易云 HTTPS 歌词接口请求，网络失败稍后重试；不使用账号 Cookie，不落盘歌词或播放历史。只读扫描网易云本机 `~/Library/Application Support/com.netease.163music/Documents/storage/CEFCache/Local Storage/leveldb/*.log` 的最新完整记录，并只读查询其辅助功能「控制」菜单，不点击播放器。权限、网络、格式变化、没有逐行歌词等问题会在浮层显示状态而非沿用旧歌词。客户端内网协议或歌词接口变更可能导致失效。
 
-- `track`：新 `lastPlaying` 记录的 `resourceId`，缺失时使用 `trackId`；不以歌名猜测歌曲。
-- `raw_ms`：最近一次客户端本地**原始**位置（毫秒），刷新通常有滞后；`held_paused=true` 时是保留的**旧观测**，不是这次刚读出的值。
-- `estimated_ms`：以原始位置和单调时钟估算的显示位置，**不是播放器实测值**；只有辅助功能明确识别“正在播放”才推进，暂停期间冻结。
-- `playing`：通过 macOS Accessibility **只读**读取网易云「控制」菜单的“暂停”（播放中）/“播放”（暂停或空闲）动作标题。它不是网易云公开的播放 API；菜单改版或权限变化时会失效。
-- `held_paused`：在同一个 CLI 和同一个网易云主进程内，此曲目此前已被验证；暂停时没有新原始记录，沿用最后一首与冻结位置。若暂停后曲目暗中变化且没有新记录，此值可能暂时过期。
-- `observed_t+…ms`：距离 CLI 启动的单调时间，不是墙上时钟。
-
-异常以 `unavailable: …` 明确输出：`NotRunning`、`NoSong`、`MissingDirectory`、`MissingField(…)`、`AccessibilityPermissionDenied`、`PermissionDenied`、`FormatChanged`、`ProcessQueryFailed`、`ReadFailed` 等。冷启动时若已暂停且没有**新**本地记录，宁可 `NoSong`，不读 `.ldb` 历史伪造当前歌曲；恢复播放后等待新记录再展示。遇到状态、权限或记录格式错误清除旧快照。
-
-## 数据来源与边界
-
-只读扫描本机目录：
-
-```text
-~/Library/Application Support/com.netease.163music/Documents/storage/CEFCache/Local Storage/leveldb/*.log
-```
-
-每个日志只读最多末尾 128 KiB，按 LevelDB 记录边界和 CRC32C 校验；只把**最新一条完整记录**的 `lastPlaying` 当作新观测。半写记录、日志轮转或最新记录是其他键时，短时缓存最多 6 秒，不用文件修改时间刷新旧歌。暂停时继续显示的旧观测由明确的 `held_paused=true` 标识，且只在同一 CLI / 网易云主进程生命周期内有效。客户端内部目录、编码和菜单项均未公开保证，升级后可能失效。
-
-不写网易云数据、不登录、不请求网络、不持久化用户播放记录。调试时**不要上传本机 `.log` / `playingList` / 数据库**；提交测试只使用合成记录。编码格式参考 [CloudLyrics-for-macOS](https://github.com/hellomyonly55/CloudLyrics-for-macOS)（MIT License）；菜单读取思路参考 [CloudMusicFocus](https://github.com/eruimisshy/CloudMusicFocus)，未复制其 GPL 源码。历史产品灵感来自 [NeteaseMusicLrcHelper](https://github.com/Lensual/NeteaseMusicLrcHelper)，不移植 Windows 内存偏移。
-
-实机动作记录见 [`docs/validation-checklist.md`](docs/validation-checklist.md)；自动测试不能代替客户端切歌、拖动、退出和重启验收。
+冷启动已暂停而没有新的本地播放记录时，宁可显示“等待当前歌曲”，不猜测历史歌曲；继续播放后等待新记录。首版不支持字级卡拉 OK、离线歌词、自动补第三方歌词源。验证记录和未覆盖场景见 [`docs/validation-checklist.md`](docs/validation-checklist.md)。灵感来自 [NeteaseMusicLrcHelper](https://github.com/Lensual/NeteaseMusicLrcHelper)，格式参考 [CloudLyrics-for-macOS](https://github.com/hellomyonly55/CloudLyrics-for-macOS)（MIT）；辅助功能思路参考 [CloudMusicFocus](https://github.com/eruimisshy/CloudMusicFocus)，没有复制其 GPL 源码。
