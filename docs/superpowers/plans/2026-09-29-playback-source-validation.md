@@ -610,11 +610,7 @@ impl Timeline {
         } else { 0 };
         let mut shown = state.shown.saturating_add(advancing);
         if exact < state.exact {
-            if !playing {
-                shown = exact;
-                state.exact = exact;
-                state.pending_backward = None;
-            } else if state.pending_backward.is_some_and(|pending| exact > pending) {
+            if !playing || state.pending_backward.is_some_and(|pending| exact > pending) {
                 shown = exact;
                 state.exact = exact;
                 state.pending_backward = None;
