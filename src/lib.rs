@@ -1,3 +1,4 @@
+pub mod accessibility;
 pub mod audio;
 pub mod decoder;
 pub mod leveldb_log;
