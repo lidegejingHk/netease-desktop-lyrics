@@ -74,16 +74,17 @@ fn state(pid: i32) -> Option<bool> {
 }
 
 pub fn merge(values: impl IntoIterator<Item = Option<bool>>) -> Option<bool> {
-    let mut known = false;
+    let mut seen = false;
+    let mut unknown = false;
     for value in values {
-        if value == Some(true) {
-            return Some(true);
-        }
-        if value == Some(false) {
-            known = true;
+        seen = true;
+        match value {
+            Some(true) => return Some(true),
+            Some(false) => {}
+            None => unknown = true,
         }
     }
-    if known {
+    if seen && !unknown {
         Some(false)
     } else {
         None
@@ -100,7 +101,9 @@ mod tests {
     #[test]
     fn any_output_wins_unknown_is_not_false() {
         assert_eq!(merge([None, None]), None);
-        assert_eq!(merge([Some(false), None]), Some(false));
+        assert_eq!(merge([Some(false), None]), None);
+        assert_eq!(merge([Some(false), Some(false)]), Some(false));
         assert_eq!(merge([Some(false), Some(true)]), Some(true));
+        assert_eq!(merge([None, Some(true)]), Some(true));
     }
 }
