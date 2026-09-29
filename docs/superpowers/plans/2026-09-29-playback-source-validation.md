@@ -30,11 +30,11 @@
 - `src/main.rs`：参数、轮询、诊断打印，不持久化用户数据。
 - `README.md`、`docs/validation-checklist.md`：运行方法、人工验收、结论规则与来源致谢。
 
-每项完成后只提交该项的文件；失败测试先跑红，再做最小实现、跑绿并提交。**实施开始前**按本机 `AGENTS.md` 加载 `/andrej-karpathy-skills:karpathy-guidelines`；若该技能不可用，明确告知用户，不假装已加载。实施前按 `using-git-worktrees` 检查隔离，禁止在 `main` 上直接实施。
+每项完成后只提交该项的文件；失败测试先跑红，再做最小实现、跑绿并提交。用户已明确取消原全局 `AGENTS.md` 中的额外编码技能前置要求。实施前按 `using-git-worktrees` 检查隔离，禁止在 `main` 上直接实施。
 
 ### Task 1: Rust 包与公开观测模型
 
-**Files:** Create `Cargo.toml`, `.gitignore`, `src/lib.rs`, `src/main.rs`; generated `Cargo.lock`.
+**Files:** Create `Cargo.toml`, `src/lib.rs`, `src/main.rs`; modify existing `.gitignore`; generated `Cargo.lock`.
 
 - [ ] **Step 1: 建立 `Cargo.toml`，再增加失败测试。** `Cargo.toml`：
 
@@ -114,12 +114,7 @@ pub enum Diagnostic {
 fn main() { println!("Playback probe: run cargo test first"); }
 ```
 
-`.gitignore`：
-
-```gitignore
-/target/
-/.DS_Store
-```
+`.gitignore` 已在建立隔离 worktree 时加入 `/.worktrees/`；本步仅补充 `/target/` 与 `/.DS_Store`，保留既有忽略项。
 
 应用进程和数据目录不属于仓库。
 
