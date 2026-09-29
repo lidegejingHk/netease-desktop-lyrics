@@ -1,4 +1,6 @@
+pub mod audio;
 pub mod decoder;
+pub mod process;
 pub mod reader;
 
 use std::time::Instant;
