@@ -41,13 +41,25 @@ fn parse(args: &[String]) -> Result<(u64, u64), String> {
     Ok((samples, interval))
 }
 
+fn on_process_discovery_error(
+    reader: &mut Reader,
+    timeline: &mut Timeline,
+    active_pid: &mut Option<i32>,
+) -> Diagnostic {
+    *active_pid = None;
+    reader.reset();
+    timeline.reset();
+    Diagnostic::MissingField("process_list")
+}
+
 fn sample(
     reader: &mut Reader,
     timeline: &mut Timeline,
     origin: Instant,
     active_pid: &mut Option<i32>,
 ) -> Result<Snapshot, Diagnostic> {
-    let pids = process::discover().map_err(|_| Diagnostic::MissingField("process_list"))?;
+    let pids = process::discover()
+        .map_err(|_| on_process_discovery_error(reader, timeline, active_pid))?;
     let Some(&pid) = pids.first() else {
         *active_pid = None;
         reader.reset();
@@ -132,7 +144,9 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::parse;
+    use super::{on_process_discovery_error, parse};
+    use netease_lyrics_rs::{reader::Reader, timeline::Timeline, Diagnostic};
+    use std::path::PathBuf;
     #[test]
     fn arguments_are_bounded() {
         assert_eq!(parse(&["--once".into()]).unwrap(), (1, 500));
@@ -147,5 +161,19 @@ mod tests {
             (4, 200)
         );
         assert!(parse(&["--interval-ms".into(), "0".into()]).is_err());
+    }
+
+    #[test]
+    fn process_query_failure_resets_old_timeline_and_pid() {
+        let mut reader = Reader::new(PathBuf::from("unused"));
+        let mut timeline = Timeline::default();
+        let mut active_pid = Some(42);
+        timeline.update("a", 1_000, true, 0);
+        assert_eq!(
+            on_process_discovery_error(&mut reader, &mut timeline, &mut active_pid),
+            Diagnostic::MissingField("process_list")
+        );
+        assert_eq!(active_pid, None);
+        assert_eq!(timeline.update("a", 1_000, true, 5_000), 1_000);
     }
 }
