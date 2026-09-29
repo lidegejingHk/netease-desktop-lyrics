@@ -6,8 +6,9 @@ enum OverlayVisibility {
         guard !visibleFrames.isEmpty else { return overlay.origin }
         let intersects = visibleFrames.contains { screen in
             let visible = screen.intersection(overlay)
-            return !visible.isNull && visible.width >= min(40, overlay.width)
-                && visible.height >= min(40, overlay.height)
+            return !visible.isNull
+                && visible.width >= min(overlay.width, screen.width) / 2
+                && visible.height >= min(overlay.height, screen.height) / 2
         }
         if intersects { return overlay.origin }
         let target = visibleFrames.min(by: { first, second in

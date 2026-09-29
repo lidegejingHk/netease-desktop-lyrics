@@ -88,6 +88,11 @@ let rescued = OverlayVisibility.origin(
     for: NSRect(x: 1300, y: 1200, width: 760, height: 112), visibleFrames: [screen]
 )
 check(near(rescued.x, 240) && near(rescued.y, 488), "Recover lyric window from disconnected display")
+let mostlyStranded = OverlayVisibility.origin(
+    for: NSRect(x: 960, y: 300, width: 760, height: 112), visibleFrames: [screen]
+)
+check(near(mostlyStranded.x, 240) && near(mostlyStranded.y, 300),
+      "Recover lyric window even when a narrow sliver remains")
 
 let isolated = ToolbarPlacement.origin(
     overlay: NSRect(x: 2400, y: 200, width: 760, height: 112),
@@ -99,6 +104,9 @@ check(isolated.x >= secondScreen.minX && isolated.x + size.width <= secondScreen
 
 let _ = NSApplication.shared
 let controls = OverlayControls()
+let handle = controls.panel.contentView!.subviews.first!
+check(handle.isAccessibilityElement() && handle.accessibilityRole() == .button,
+      "Drag handle is exposed as an accessible control")
 check(!controls.panel.ignoresMouseEvents, "Toolbar is interactive by default")
 controls.setLocked(true)
 check(!controls.panel.ignoresMouseEvents, "Toolbar stays interactive while lyrics lock")

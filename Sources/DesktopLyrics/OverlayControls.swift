@@ -133,6 +133,7 @@ private final class OverlayDragHandle: NSView {
         glyph.font = .systemFont(ofSize: 22, weight: .regular)
         glyph.textColor = .white.withAlphaComponent(0.92)
         addSubview(glyph)
+        setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel("拖动歌词位置")
         toolTip = "拖动歌词位置"
