@@ -116,11 +116,10 @@ fn format_snapshot(snapshot: &Snapshot, origin: Instant) -> String {
     )
 }
 
-fn report_event(event: &Event) {
-    if let Ok(json) = serde_json::to_string(event) {
-        println!("{json}");
-        let _ = io::stdout().flush();
-    }
+fn write_event<W: Write>(output: &mut W, event: &Event) -> io::Result<()> {
+    serde_json::to_writer(&mut *output, event)?;
+    output.write_all(b"\n")?;
+    output.flush()
 }
 
 fn diagnostic_reason(error: &Diagnostic) -> &'static str {
@@ -170,6 +169,8 @@ fn stream(
 ) {
     let mut session = LyricsSession::new();
     let (sender, receiver) = mpsc::channel();
+    let stdout = io::stdout();
+    let mut output = stdout.lock();
     for index in 0..samples {
         let snapshot = sample(reader, tracker, origin, active_pid);
         let now_ms = origin.elapsed().as_millis() as u64;
@@ -177,14 +178,23 @@ fn stream(
             Ok(snapshot) => {
                 take_completed(&mut session, &receiver, now_ms);
                 let event = session.observe(&snapshot, now_ms);
-                report_event(&event);
+                if write_event(&mut output, &event).is_err() {
+                    return;
+                }
                 if let Some(request) = session.take_request() {
                     start_request(request, sender.clone());
                 }
             }
             Err(diagnostic) => {
                 take_completed(&mut session, &receiver, now_ms);
-                report_event(&session.unavailable(diagnostic_reason(&diagnostic)));
+                if write_event(
+                    &mut output,
+                    &session.unavailable(diagnostic_reason(&diagnostic)),
+                )
+                .is_err()
+                {
+                    return;
+                }
             }
         }
         if index + 1 < samples {
@@ -234,9 +244,42 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{on_process_discovery_error, parse};
+    use super::{on_process_discovery_error, parse, write_event};
+    use netease_lyrics_rs::lyrics_stream::Event;
     use netease_lyrics_rs::{playback::PlaybackTracker, reader::Reader, Diagnostic};
     use std::path::PathBuf;
+
+    #[test]
+    fn json_stream_is_one_line_and_stops_on_closed_reader() {
+        let mut output = Vec::new();
+        write_event(
+            &mut output,
+            &Event::Unavailable {
+                reason: "no_song".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            output,
+            b"{\"kind\":\"unavailable\",\"reason\":\"no_song\"}\n"
+        );
+
+        struct Closed;
+        impl std::io::Write for Closed {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::ErrorKind::BrokenPipe.into())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        assert_eq!(
+            write_event(&mut Closed, &Event::Loading)
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::BrokenPipe
+        );
+    }
     #[test]
     fn arguments_are_bounded() {
         assert_eq!(parse(&["--once".into()]).unwrap(), (1, 500, false));
