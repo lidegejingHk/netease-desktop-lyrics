@@ -2,6 +2,7 @@ pub mod audio;
 pub mod decoder;
 pub mod process;
 pub mod reader;
+pub mod timeline;
 
 use std::time::Instant;
 
