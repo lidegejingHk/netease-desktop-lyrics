@@ -32,6 +32,7 @@ pub fn parse(bytes: &[u8], start_offset: u64) -> Result<ParsedLog, LogError> {
     };
     let mut cursor = 0;
     let mut fragments: Option<Vec<u8>> = None;
+    let mut skip_orphaned = start_offset > 0;
     while cursor < bytes.len() {
         let within_block = cursor % BLOCK_SIZE;
         let block_left = BLOCK_SIZE - within_block;
@@ -83,6 +84,7 @@ pub fn parse(bytes: &[u8], start_offset: u64) -> Result<ParsedLog, LogError> {
                 if fragments.is_some() {
                     return Err(LogError::Corrupt);
                 }
+                skip_orphaned = false;
                 parsed.records.push(Record {
                     payload: payload.to_vec(),
                     end_offset: start_offset + end as u64,
@@ -92,7 +94,14 @@ pub fn parse(bytes: &[u8], start_offset: u64) -> Result<ParsedLog, LogError> {
                 if fragments.is_some() {
                     return Err(LogError::Corrupt);
                 }
+                skip_orphaned = false;
                 fragments = Some(payload.to_vec());
+            }
+            3 | 4 if skip_orphaned => {
+                // The discarded prior block may contain the FIRST fragment.
+                if kind == 4 {
+                    skip_orphaned = false;
+                }
             }
             3 | 4 => {
                 let Some(pending) = fragments.as_mut() else {
@@ -117,18 +126,19 @@ pub fn parse(bytes: &[u8], start_offset: u64) -> Result<ParsedLog, LogError> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{parse, LogError};
+pub(crate) fn fixture_record(kind: u8, payload: &[u8]) -> Vec<u8> {
+    let mut bytes = vec![0_u8; 7];
+    bytes[4..6].copy_from_slice(&(payload.len() as u16).to_le_bytes());
+    bytes[6] = kind;
+    let crc = crc32c::crc32c_append(crc32c::crc32c(&[kind]), payload);
+    bytes[..4].copy_from_slice(&crc.rotate_right(15).wrapping_add(0xa282_ead8).to_le_bytes());
+    bytes.extend_from_slice(payload);
+    bytes
+}
 
-    fn physical(kind: u8, payload: &[u8]) -> Vec<u8> {
-        let mut bytes = vec![0_u8; 7];
-        bytes[4..6].copy_from_slice(&(payload.len() as u16).to_le_bytes());
-        bytes[6] = kind;
-        let crc = crc32c::crc32c_append(crc32c::crc32c(&[kind]), payload);
-        bytes[..4].copy_from_slice(&crc.rotate_right(15).wrapping_add(0xa282_ead8).to_le_bytes());
-        bytes.extend_from_slice(payload);
-        bytes
-    }
+#[cfg(test)]
+mod tests {
+    use super::{fixture_record as physical, parse, LogError};
 
     #[test]
     fn reads_only_complete_checksum_verified_records() {
@@ -164,6 +174,16 @@ mod tests {
         assert_eq!(parsed.records.len(), 2);
         assert_eq!(parsed.records[1].payload, b"abcdef");
         assert_eq!(parsed.records[1].end_offset, bytes.len() as u64);
+    }
+
+    #[test]
+    fn skips_orphaned_fragments_when_tail_starts_at_later_block() {
+        let mut bytes = physical(3, b"middle of older record");
+        bytes.extend(physical(4, b"end of older record"));
+        bytes.extend(physical(1, b"fresh record"));
+        let parsed = parse(&bytes, 32_768).unwrap();
+        assert_eq!(parsed.records.len(), 1);
+        assert_eq!(parsed.records[0].payload, b"fresh record");
     }
 
     #[test]
