@@ -13,6 +13,8 @@ pub enum Event {
         next: String,
         playing: bool,
         held_paused: bool,
+        position_ms: u64,
+        duration_ms: Option<u64>,
     },
     Line {
         text: String,
@@ -21,6 +23,7 @@ pub enum Event {
         playing: bool,
         held_paused: bool,
         position_ms: u64,
+        duration_ms: Option<u64>,
         line_start_ms: u64,
         next_start_ms: Option<u64>,
     },
@@ -68,6 +71,9 @@ impl LyricsSession {
                     playing: snapshot.is_playing,
                     held_paused: snapshot.held_paused,
                     position_ms: snapshot.estimated_position_ms,
+                    // Whole-song progress comes from the same verified snapshot;
+                    // a missing duration is reported as missing, never guessed.
+                    duration_ms: snapshot.raw.duration_ms,
                     line_start_ms: line.line_start_ms,
                     next_start_ms: line.next_start_ms,
                 };
@@ -79,6 +85,8 @@ impl LyricsSession {
                     .unwrap_or_default(),
                 playing: snapshot.is_playing,
                 held_paused: snapshot.held_paused,
+                position_ms: snapshot.estimated_position_ms,
+                duration_ms: snapshot.raw.duration_ms,
             };
         }
         if let Some((reason, retry_at)) = &self.error {
@@ -203,6 +211,20 @@ mod tests {
         }
     }
 
+    fn playing_with_duration(id: &str, ms: u64, duration_ms: Option<u64>) -> Snapshot {
+        Snapshot {
+            raw: RawPlayback {
+                track_id: id.into(),
+                position_ms: ms,
+                duration_ms,
+            },
+            estimated_position_ms: ms,
+            is_playing: true,
+            held_paused: false,
+            observed_at: Instant::now(),
+        }
+    }
+
     #[test]
     fn load_line_pause_seek_track_change_and_unavailable() {
         let mut session = LyricsSession::new();
@@ -247,6 +269,82 @@ mod tests {
             matches!(session.observe(&a, 9_999), Event::Unavailable { reason } if reason == "network")
         );
         assert!(matches!(session.observe(&a, 10_000), Event::Loading));
+    }
+
+    #[test]
+    fn events_carry_whole_song_progress_without_leaking_the_track_id() {
+        let mut session = LyricsSession::new();
+        let playing = playing_with_duration("4821969", 1_100, Some(215_000));
+        assert!(matches!(session.observe(&playing, 0), Event::Loading));
+        session
+            .install_response(
+                "4821969",
+                br#"{"code":200,"lrc":{"lyric":"[00:01]first\n[00:04]second"}}"#,
+                1,
+            )
+            .unwrap();
+        let line = session.observe(&playing, 2);
+        match &line {
+            Event::Line {
+                position_ms,
+                duration_ms,
+                ..
+            } => {
+                assert_eq!(*position_ms, 1_100);
+                assert_eq!(*duration_ms, Some(215_000));
+            }
+            other => panic!("expected a synced line, got {other:?}"),
+        }
+        let json = serde_json::to_string(&line).unwrap();
+        assert!(json.contains("\"position_ms\":1100"));
+        assert!(json.contains("\"duration_ms\":215000"));
+        assert!(!json.contains("4821969"));
+        assert!(!json.contains("track_id"));
+
+        let intro = session.observe(&playing_with_duration("4821969", 0, Some(215_000)), 3);
+        match &intro {
+            Event::Intro {
+                position_ms,
+                duration_ms,
+                ..
+            } => {
+                assert_eq!(*position_ms, 0);
+                assert_eq!(*duration_ms, Some(215_000));
+            }
+            other => panic!("expected an intro, got {other:?}"),
+        }
+        assert!(serde_json::to_string(&intro)
+            .unwrap()
+            .contains("\"position_ms\":0"));
+    }
+
+    #[test]
+    fn unknown_duration_is_null_instead_of_a_fabricated_position() {
+        let mut session = LyricsSession::new();
+        let playing = playing_with_duration("4821969", 1_100, None);
+        assert!(matches!(session.observe(&playing, 0), Event::Loading));
+        session
+            .install_response(
+                "4821969",
+                br#"{"code":200,"lrc":{"lyric":"[00:01]first"}}"#,
+                1,
+            )
+            .unwrap();
+        let line = session.observe(&playing, 2);
+        match &line {
+            Event::Line {
+                position_ms,
+                duration_ms,
+                ..
+            } => {
+                assert_eq!(*position_ms, 1_100);
+                assert_eq!(*duration_ms, None);
+            }
+            other => panic!("expected a synced line, got {other:?}"),
+        }
+        assert!(serde_json::to_string(&line)
+            .unwrap()
+            .contains("\"duration_ms\":null"));
     }
 
     #[test]
