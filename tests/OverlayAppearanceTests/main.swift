@@ -298,6 +298,31 @@ let lockCenter = NSPoint(x: controls.controlPanels[1].frame.midX,
 awaitMouseState("All four buttons receive clicks; the gap reaches unlocked lyrics") {
     expandedButtonsReceiveClicks() && mouseTarget(clickGap) == lyricPanel.windowNumber
 }
+// Run a native down/up sequence through the small panel, not NSButton.performClick.
+// Posting the up event first lets NSButton's tracking loop consume it after down.
+func sendPanelClick(_ window: NSPanel) {
+    let location = NSPoint(x: window.contentView!.bounds.midX,
+                           y: window.contentView!.bounds.midY)
+    let timestamp = ProcessInfo.processInfo.systemUptime
+    let down = NSEvent.mouseEvent(with: .leftMouseDown, location: location,
+                                  modifierFlags: [], timestamp: timestamp,
+                                  windowNumber: window.windowNumber, context: nil,
+                                  eventNumber: 1, clickCount: 1, pressure: 1)!
+    let up = NSEvent.mouseEvent(with: .leftMouseUp, location: location,
+                                modifierFlags: [], timestamp: timestamp + 0.01,
+                                windowNumber: window.windowNumber, context: nil,
+                                eventNumber: 2, clickCount: 1, pressure: 0)!
+    NSApp.postEvent(up, atStart: true)
+    window.sendEvent(down)
+}
+let countsBeforeEvents = (tappedLock, tappedSettings, tappedCollapse)
+sendPanelClick(controls.controlPanels[1])
+sendPanelClick(controls.controlPanels[2])
+sendPanelClick(controls.controlPanels[3])
+check(tappedLock == countsBeforeEvents.0 + 1 &&
+      tappedSettings == countsBeforeEvents.1 + 1 &&
+      tappedCollapse == countsBeforeEvents.2 + 1,
+      "Native button-window mouse events dispatch lock, style, and collapse actions")
 controls.setVisible(false)
 awaitMouseState("Hidden controls leave no mouse targets over the lyrics") {
     mouseTarget(dragCenter) == lyricPanel.windowNumber &&
