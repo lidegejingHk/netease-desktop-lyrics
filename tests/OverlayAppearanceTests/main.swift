@@ -134,6 +134,20 @@ let thinCollapsed = ToolbarPlacement.origin(overlay: thinSliver,
 check(near(thinExpanded.x + size.width,
            thinCollapsed.x + OverlayControls.collapsedSize.width),
       "Collapsed controls preserve the same right edge even if lyrics have only a thin visible sliver")
+check(thinCollapsed.x >= screen.minX &&
+      thinCollapsed.x + OverlayControls.collapsedSize.width <= thinSliver.maxX,
+      "Collapsed control remains inside the visible lyric sliver")
+let thinCollapseButton = NSRect(x: thinExpanded.x + 124, y: thinExpanded.y + 3,
+                                width: 34, height: 32)
+check(thinCollapseButton.minX >= screen.minX && thinCollapseButton.maxX <= thinSliver.maxX,
+      "Expanded toolbar keeps its collapse button accessible inside the lyric sliver")
+let tinySliver = NSRect(x: -740, y: 100, width: 760, height: 112)
+let tinyCollapsed = ToolbarPlacement.origin(overlay: tinySliver,
+                                             size: OverlayControls.collapsedSize,
+                                             visibleFrames: [screen])
+check(tinyCollapsed.x + OverlayControls.collapsedSize.width <= tinySliver.maxX &&
+      tinyCollapsed.x + 2 + 34 > screen.minX,
+      "When less than a button fits, the visible part still stays inside the lyric sliver")
 let edgeScreens = [screen, secondScreen]
 let edgeOverlay = NSRect(x: 950, y: 100, width: 760, height: 112)
 let edgeExpanded = ToolbarPlacement.origin(overlay: edgeOverlay, size: size,

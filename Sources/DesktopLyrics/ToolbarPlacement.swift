@@ -23,18 +23,34 @@ enum ToolbarPlacement {
         }) else {
             return desired
         }
-        // Use the expanded width for the screen-safe anchor in both states.
-        // A narrow visible sliver cannot contain the expanded toolbar; in that
-        // case keep both states together on-screen rather than jumping on toggle.
-        let safeRight = screen.width >= expandedWidth + horizontalInset * 2
-            ? min(max(overlay.maxX - 10, screen.minX + expandedWidth + horizontalInset),
-                  screen.maxX - horizontalInset)
-            : screen.maxX
         let visibleOverlay = screen.intersection(overlay)
+        let desiredRight = overlay.maxX - 10
+        let safeRight: CGFloat
+        if !visibleOverlay.isNull && visibleOverlay.width < expandedWidth + horizontalInset * 2 {
+            // If the lyrics only show a sliver, clipping the expanded toolbar is
+            // preferable to moving its collapse/expand button away from the lyrics.
+            // The expanded button ends 8 pt before this anchor; the collapsed
+            // button ends 2 pt before it. Preserve this anchor in both states.
+            // A 42 pt margin lets the entire collapsed button fit at the left edge.
+            let minRight = visibleOverlay.minX + 42
+            let maxRight = visibleOverlay.maxX
+            if minRight <= maxRight {
+                safeRight = min(max(desiredRight, minRight), maxRight)
+            } else if visibleOverlay.minX <= screen.minX {
+                safeRight = maxRight // clipped at the left edge
+            } else {
+                safeRight = minRight // clipped at the right edge
+            }
+        } else if screen.width >= expandedWidth + horizontalInset * 2 {
+            safeRight = min(max(desiredRight, screen.minX + expandedWidth + horizontalInset),
+                            screen.maxX - horizontalInset)
+        } else {
+            safeRight = min(max(desiredRight, screen.minX), screen.maxX)
+        }
         let vertical = !visibleOverlay.isNull
             && visibleOverlay.height >= size.height + verticalInset * 2
             ? visibleOverlay : screen
-        let x = max(screen.minX, safeRight - size.width)
+        let x = safeRight - size.width
         let y = min(max(desired.y, vertical.minY + verticalInset),
                     max(vertical.minY + verticalInset,
                         vertical.maxY - size.height - verticalInset))
