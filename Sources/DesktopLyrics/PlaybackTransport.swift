@@ -64,15 +64,28 @@ enum PlaybackTransport {
     /// same menu state. A real menu-state change clears the failure latch.
     struct FailureLatch {
         private(set) var failed: (action: Action, state: Availability)?
+        private var interrupted = false
 
         mutating func record(_ action: Action, in state: Availability) {
             failed = (action, state)
+            interrupted = false
         }
 
         mutating func visibleState(for current: Availability) -> Availability {
             guard let failed else { return current }
             if failed.state == current { return current.suppressing(failed.action) }
+            if current == .unavailable {
+                // A temporary AX timeout is not evidence that the player
+                // actually changed its menu; keep the failure until it returns.
+                interrupted = true
+                return current
+            }
+            if interrupted && current.allows(failed.action) {
+                interrupted = false
+                return current.suppressing(failed.action)
+            }
             self.failed = nil
+            interrupted = false
             return current
         }
     }

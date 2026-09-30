@@ -46,6 +46,9 @@ failureLatch.record(.play, in: pausedMenu)
 check(!failureLatch.visibleState(for: pausedMenu).allows(.play) &&
       !failureLatch.visibleState(for: pausedMenu).allows(.play),
       "The same failing menu action stays disabled over repeated polling")
+check(failureLatch.visibleState(for: .unavailable) == .unavailable &&
+      !failureLatch.visibleState(for: pausedMenu).allows(.play),
+      "A temporary AX read failure cannot re-enable an unchanged failed action")
 let changedMenu = PlaybackTransport.Availability(previous: false, toggle: .pause, next: true)
 check(failureLatch.visibleState(for: changedMenu).allows(.pause) &&
       failureLatch.failed == nil,
