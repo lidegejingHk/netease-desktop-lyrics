@@ -147,19 +147,27 @@ check(near(edgeExpanded.x + size.width,
 
 let _ = NSApplication.shared
 let controls = OverlayControls()
-check(!controls.panel.hasShadow && controls.panel.level.rawValue > NSWindow.Level.floating.rawValue,
-      "Transparent controls float above the lyric panel without a detached shadow")
-check(controls.panel.contentView!.layer!.backgroundColor!.alpha == 0 &&
-      controls.panel.contentView!.layer!.borderWidth == 0,
-      "Controls have no detached pill background or outline")
-let handle = controls.panel.contentView!.subviews.first!
+check(!controls.panel.hasShadow &&
+      controls.controlPanels.allSatisfy { $0.level.rawValue > NSWindow.Level.floating.rawValue },
+      "Individual transparent controls float above the lyrics without detached shadows")
+check(controls.panel.ignoresMouseEvents && !controls.panel.isVisible,
+      "Full-size toolbar layout frame cannot intercept mouse events")
+check(controls.controlPanels.count == 5 &&
+      controls.controlPanels.allSatisfy {
+          !$0.hasShadow && !$0.isOpaque && !$0.hidesOnDeactivate &&
+          $0.collectionBehavior.contains(.canJoinAllSpaces)
+      },
+      "Only individual 34-point control windows can receive clicks")
+let handle = controls.controlPanels[0].contentView!
+check(handle.hitTest(NSPoint(x: 17, y: 16)) === handle,
+      "Drag handle receives pointer input in its own small panel")
 let styledToolbar = OverlayStyle(backgroundRGB: "#112233", textRGB: "#20CF80", chipRGB: "#000000",
                                  backgroundOpacity: 0.3, chipOpacity: 0.5)
 controls.applyStyle(styledToolbar)
 let handleGlyph = handle.subviews.first as! NSTextField
 check(OverlayStyle.rgbHex(handleGlyph.textColor!) == "#20CF80",
       "Drag handle tint follows the lyric text color")
-check(controls.panel.contentView!.subviews.compactMap { $0 as? NSButton }
+check(controls.controlPanels.compactMap { $0.contentView as? NSButton }
     .allSatisfy { OverlayStyle.rgbHex($0.contentTintColor!) == "#20CF80" },
       "All toolbar icons follow the lyric text color")
 check(handle.isAccessibilityElement() && handle.accessibilityRole() == .button,
@@ -172,28 +180,31 @@ func movementEvent(x: CGFloat, y: CGFloat, deltaX: Int64, deltaY: Int64) -> NSEv
     return NSEvent(cgEvent: cgEvent)!
 }
 let mouseDown = NSEvent.mouseEvent(with: .leftMouseDown, location: NSPoint(x: 10, y: 10),
-                                   modifierFlags: [], timestamp: 0, windowNumber: controls.panel.windowNumber,
+                                   modifierFlags: [], timestamp: 0, windowNumber: controls.controlPanels[0].windowNumber,
                                    context: nil, eventNumber: 0, clickCount: 1, pressure: 0)!
 var dragDelta = NSPoint.zero
 controls.onDrag = { dragDelta = $0 }
 handle.mouseDown(with: mouseDown)
 handle.mouseDragged(with: movementEvent(x: 30, y: 25, deltaX: 20, deltaY: -15))
 check(near(dragDelta.x, 20) && near(dragDelta.y, 15), "Drag uses event delta with flipped Y")
-check(!controls.panel.ignoresMouseEvents, "Toolbar is interactive by default")
+check(!controls.controlPanels[0].ignoresMouseEvents,
+      "Unlocked drag handle has a clickable window")
 var tappedLock = 0
 var tappedSettings = 0
 var tappedCollapse = 0
 controls.onToggleLock = { tappedLock += 1 }
 controls.onToggleSettings = { tappedSettings += 1 }
 controls.onToggleCollapsed = { tappedCollapse += 1 }
-let toolbarButtons = controls.panel.contentView!.subviews.compactMap { $0 as? NSButton }
+let toolbarButtons = controls.controlPanels.compactMap { $0.contentView as? NSButton }
 toolbarButtons.first(where: { $0.accessibilityLabel() == "锁定歌词位置" })!.performClick(nil)
 toolbarButtons.first(where: { $0.accessibilityLabel() == "设置歌词样式" })!.performClick(nil)
 toolbarButtons.first(where: { $0.accessibilityLabel() == "收起工具条" })!.performClick(nil)
 check(tappedLock == 1 && tappedSettings == 1 && tappedCollapse == 1,
       "Toolbar actions dispatch to their owning controller")
 controls.setLocked(true)
-check(!controls.panel.ignoresMouseEvents, "Toolbar stays interactive while lyrics lock")
+check(controls.controlPanels[0].ignoresMouseEvents &&
+      controls.controlPanels.dropFirst().allSatisfy { !$0.ignoresMouseEvents },
+      "Locked drag handle passes clicks through; remaining buttons stay interactive")
 check(handleGlyph.textColor!.alphaComponent < 0.5,
       "Locked drag handle dims while remaining visible")
 dragDelta = .zero
@@ -214,6 +225,25 @@ controls.follow(overlay: NSRect(x: 100, y: 100, width: 760, height: 112),
                 visibleFrames: [screen])
 check(near(controls.panel.frame.origin.x, 684) && near(controls.panel.frame.origin.y, 168),
       "Interactive toolbar follows the lyric panel on its inside")
+controls.setVisible(true)
+let activeWindows = controls.controlPanels.filter(\.isVisible)
+check(activeWindows.count == 4 && activeWindows.allSatisfy { $0.frame.width == 34 },
+      "Expanded toolbar exposes four small hit windows rather than one large one")
+check(activeWindows.allSatisfy { !$0.ignoresMouseEvents || $0 === controls.controlPanels[0] },
+      "Icon panels remain interactive")
+let gap = NSPoint(x: controls.panel.frame.minX + 43, y: controls.panel.frame.minY + 20)
+check(controls.panel.frame.contains(gap) &&
+      !activeWindows.contains(where: { $0.frame.contains(gap) }),
+      "Transparent space between icons contains no mouse-intercepting window")
+controls.setCollapsed(true)
+check(controls.controlPanels.filter(\.isVisible).count == 1 &&
+      controls.controlPanels[4].isVisible,
+      "Collapsed toolbar leaves only one small hit window")
+check(near(controls.controlPanels[4].frame.maxX, controls.panel.frame.maxX - 2),
+      "The collapsed hit window stays on the same right edge")
+controls.setVisible(false)
+check(controls.controlPanels.allSatisfy { !$0.isVisible },
+      "Hiding lyrics also removes all toolbar hit targets")
 
 controls.setLocked(false)
 var overlayForDrag = NSRect(x: 100, y: 100, width: 760, height: 112)

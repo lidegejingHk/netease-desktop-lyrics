@@ -286,7 +286,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     }
 
     private func showStatus(_ message: String) {
-        content.show(primary: message, secondary: "附近工具条可拖动、锁定并设置颜色与透明度", fraction: 0, active: false)
+        content.show(primary: message, secondary: "右上角按钮可拖动、锁定并设置颜色与透明度", fraction: 0, active: false)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
