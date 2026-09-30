@@ -246,8 +246,12 @@ check(handle.hitTest(NSPoint(x: 17, y: 16)) === handle,
 let styledToolbar = OverlayStyle(backgroundRGB: "#112233", textRGB: "#20CF80", chipRGB: "#000000",
                                  backgroundOpacity: 0.3, chipOpacity: 0.5)
 controls.applyStyle(styledToolbar)
-let handleGlyph = handle.subviews.first as! NSTextField
-check(OverlayStyle.rgbHex(handleGlyph.textColor!) == "#20CF80" &&
+guard let handleGlyph = handle.subviews.first as? NSImageView else {
+    fatalError("The drag handle must draw one tintable move image")
+}
+check(handleGlyph.image != nil && handleGlyph.image!.isTemplate &&
+      OverlayStyle.rgbHex(handleGlyph.contentTintColor!) == "#20CF80" &&
+      handleGlyph.contentTintColor!.alphaComponent > 0.9 &&
       near(controls.panel.contentView!.layer!.backgroundColor!.alpha, 0) &&
       near(controls.playbackPanel.contentView!.layer!.backgroundColor!.alpha, 0) &&
       (controls.controlPanels[6].contentView! as! NSButton).contentTintColor!.alphaComponent >
@@ -306,8 +310,11 @@ check(controls.controlPanels[0].ignoresMouseEvents &&
       (1...4).allSatisfy { !controls.controlPanels[$0].ignoresMouseEvents } &&
       (5...7).allSatisfy { controls.controlPanels[$0].ignoresMouseEvents },
       "Lock passes through drag and disabled transport; remaining tools stay interactive")
-check(handleGlyph.textColor!.alphaComponent < 0.5,
+check(handleGlyph.contentTintColor!.alphaComponent < 0.5,
       "Locked drag handle dims while remaining visible")
+check(handle.subviews.count == 1 &&
+      handleGlyph.image!.size.width > 0 && handleGlyph.image!.size.height > 0,
+      "The drag handle shows exactly one movable-glyph image")
 dragDelta = .zero
 handle.mouseDown(with: mouseDown)
 handle.mouseDragged(with: movementEvent(x: 35, y: 22, deltaX: 25, deltaY: -12))

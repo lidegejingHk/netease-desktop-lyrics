@@ -231,13 +231,14 @@ private final class OverlayDragHandle: NSView {
     var isLocked = false {
         didSet { updateTint() }
     }
-    private let glyph = NSTextField(labelWithString: "✥")
+    private let glyph = NSImageView()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         glyph.frame = bounds
-        glyph.alignment = .center
-        glyph.font = .systemFont(ofSize: 22, weight: .regular)
+        glyph.imageScaling = .scaleProportionallyDown
+        glyph.imageAlignment = .alignCenter
+        glyph.image = Self.moveImage()
         updateTint()
         addSubview(glyph)
         setAccessibilityElement(true)
@@ -248,8 +249,29 @@ private final class OverlayDragHandle: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
 
+    /// The standard four-way move symbol, with a drawn glyph as a last resort.
+    private static func moveImage() -> NSImage {
+        if let symbol = NSImage(systemSymbolName: "arrow.up.and.down.and.arrow.left.and.right",
+                                accessibilityDescription: nil),
+           let configured = symbol.withSymbolConfiguration(
+               NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)) {
+            return configured
+        }
+        let fallback = NSImage(size: NSSize(width: 20, height: 20), flipped: false) { rect in
+            let text = NSAttributedString(string: "✥", attributes: [
+                .font: NSFont.systemFont(ofSize: 18, weight: .regular),
+                .foregroundColor: NSColor.black,
+            ])
+            let size = text.size()
+            text.draw(at: NSPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2))
+            return true
+        }
+        fallback.isTemplate = true
+        return fallback
+    }
+
     private func updateTint() {
-        glyph.textColor = tintColor.withAlphaComponent(isLocked ? 0.42 : 0.94)
+        glyph.contentTintColor = tintColor.withAlphaComponent(isLocked ? 0.42 : 0.94)
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
