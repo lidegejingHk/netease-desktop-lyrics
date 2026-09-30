@@ -70,44 +70,58 @@ check(store.load().chipOpacity == baseline.chipOpacity, "Infinity fallback")
 defaults.set(true, forKey: "overlayStyle.backgroundOpacity")
 check(store.load().backgroundOpacity == baseline.backgroundOpacity, "Boolean opacity fallback")
 
+let twoRowOverlay = NSRect(x: 100, y: 100, width: 860, height: 176)
+let twoRowOrigin = ToolbarPlacement.origin(overlay: twoRowOverlay,
+                                           size: OverlayControls.expandedSize,
+                                           visibleFrames: [NSRect(x: 0, y: 0, width: 1000, height: 600)])
+check(near(OverlayControls.expandedSize.height, 80), "Two rows have a reserved 80-point height")
+check(near(twoRowOrigin.x, 784) && near(twoRowOrigin.y, 148),
+      "The controls move down and stay in the right rail")
+let twoRowCollapsed = ToolbarPlacement.origin(overlay: twoRowOverlay,
+                                              size: OverlayControls.collapsedSize,
+                                              visibleFrames: [NSRect(x: 0, y: 0, width: 1000, height: 600)])
+check(near(twoRowCollapsed.y, twoRowOrigin.y) &&
+      near(twoRowCollapsed.x + OverlayControls.collapsedSize.width,
+           twoRowOrigin.x + OverlayControls.expandedSize.width),
+      "Collapse keeps the lower row and right edge anchored")
 let screen = NSRect(x: 0, y: 0, width: 1000, height: 600)
-let size = NSSize(width: 166, height: 38)
+let size = OverlayControls.expandedSize
 let above = ToolbarPlacement.origin(
-    overlay: NSRect(x: 100, y: 100, width: 760, height: 112),
+    overlay: NSRect(x: 100, y: 100, width: 860, height: 176),
     size: size,
     visibleFrames: [screen]
 )
-check(near(above.x, 684) && near(above.y, 168), "Toolbar inside the lyric frame at its upper right")
+check(near(above.x, 784) && near(above.y, 148), "Toolbar in the right rail, below the top edge")
 let below = ToolbarPlacement.origin(
-    overlay: NSRect(x: 700, y: 490, width: 760, height: 112),
+    overlay: NSRect(x: 700, y: 490, width: 860, height: 176),
     size: size,
     visibleFrames: [screen]
 )
-check(near(below.x, 826) && near(below.y, 556),
+check(near(below.x, 826) && near(below.y, 514),
       "Toolbar stays inside the visible part of a lyric window at the screen edge")
 let secondScreen = NSRect(x: 1000, y: -200, width: 1200, height: 700)
 let moved = ToolbarPlacement.origin(
-    overlay: NSRect(x: 1300, y: 100, width: 760, height: 112),
+    overlay: NSRect(x: 1300, y: 100, width: 860, height: 176),
     size: size,
     visibleFrames: [screen, secondScreen]
 )
-check(near(moved.x, 1884) && near(moved.y, 168), "Toolbar anchors within the active display")
+check(near(moved.x, 1984) && near(moved.y, 148), "Toolbar anchors within the active display")
 let safelyKept = OverlayVisibility.origin(
-    for: NSRect(x: 1200, y: 100, width: 760, height: 112), visibleFrames: [screen, secondScreen]
+    for: NSRect(x: 1200, y: 100, width: 860, height: 176), visibleFrames: [screen, secondScreen]
 )
 check(near(safelyKept.x, 1200) && near(safelyKept.y, 100), "Keep visible lyric window")
 let rescued = OverlayVisibility.origin(
-    for: NSRect(x: 1300, y: 1200, width: 760, height: 112), visibleFrames: [screen]
+    for: NSRect(x: 1300, y: 1200, width: 860, height: 176), visibleFrames: [screen]
 )
-check(near(rescued.x, 240) && near(rescued.y, 488), "Recover lyric window from disconnected display")
+check(near(rescued.x, 140) && near(rescued.y, 424), "Recover lyric window from disconnected display")
 let mostlyStranded = OverlayVisibility.origin(
-    for: NSRect(x: 960, y: 300, width: 760, height: 112), visibleFrames: [screen]
+    for: NSRect(x: 960, y: 300, width: 860, height: 176), visibleFrames: [screen]
 )
-check(near(mostlyStranded.x, 240) && near(mostlyStranded.y, 300),
+check(near(mostlyStranded.x, 140) && near(mostlyStranded.y, 300),
       "Recover lyric window even when a narrow sliver remains")
 
 let isolated = ToolbarPlacement.origin(
-    overlay: NSRect(x: 2400, y: 200, width: 760, height: 112),
+    overlay: NSRect(x: 2400, y: 200, width: 860, height: 176),
     size: size,
     visibleFrames: [screen, secondScreen]
 )
@@ -115,18 +129,18 @@ check(isolated.x >= secondScreen.minX && isolated.x + size.width <= secondScreen
       "Fallback position remains on a visible display")
 
 let noDisplay = ToolbarPlacement.origin(
-    overlay: NSRect(x: 100, y: 100, width: 760, height: 112),
+    overlay: NSRect(x: 100, y: 100, width: 860, height: 176),
     size: size, visibleFrames: []
 )
-check(near(noDisplay.x, 684) && near(noDisplay.y, 168),
+check(near(noDisplay.x, 784) && near(noDisplay.y, 148),
       "Display-less fallback remains inside the lyric frame")
 let collapsedPoint = ToolbarPlacement.origin(
-    overlay: NSRect(x: 100, y: 100, width: 760, height: 112),
+    overlay: NSRect(x: 100, y: 100, width: 860, height: 176),
     size: OverlayControls.collapsedSize, visibleFrames: [screen]
 )
 check(near(collapsedPoint.x + OverlayControls.collapsedSize.width, above.x + size.width),
       "Collapsed toolbar keeps the same right edge")
-let thinSliver = NSRect(x: -700, y: 100, width: 760, height: 112)
+let thinSliver = NSRect(x: -800, y: 100, width: 860, height: 176)
 let thinExpanded = ToolbarPlacement.origin(overlay: thinSliver, size: size, visibleFrames: [screen])
 let thinCollapsed = ToolbarPlacement.origin(overlay: thinSliver,
                                              size: OverlayControls.collapsedSize,
@@ -141,7 +155,7 @@ let thinCollapseButton = NSRect(x: thinExpanded.x + 124, y: thinExpanded.y + 3,
                                 width: 34, height: 32)
 check(thinCollapseButton.minX >= screen.minX && thinCollapseButton.maxX <= thinSliver.maxX,
       "Expanded toolbar keeps its collapse button accessible inside the lyric sliver")
-let tinySliver = NSRect(x: -740, y: 100, width: 760, height: 112)
+let tinySliver = NSRect(x: -840, y: 100, width: 860, height: 176)
 let tinyCollapsed = ToolbarPlacement.origin(overlay: tinySliver,
                                              size: OverlayControls.collapsedSize,
                                              visibleFrames: [screen])
@@ -149,7 +163,7 @@ check(tinyCollapsed.x + OverlayControls.collapsedSize.width <= tinySliver.maxX &
       tinyCollapsed.x + 2 + 34 > screen.minX,
       "When less than a button fits, the visible part still stays inside the lyric sliver")
 let edgeScreens = [screen, secondScreen]
-let edgeOverlay = NSRect(x: 950, y: 100, width: 760, height: 112)
+let edgeOverlay = NSRect(x: 950, y: 100, width: 860, height: 176)
 let edgeExpanded = ToolbarPlacement.origin(overlay: edgeOverlay, size: size,
                                             visibleFrames: edgeScreens)
 let edgeCollapsed = ToolbarPlacement.origin(overlay: edgeOverlay,
@@ -166,12 +180,25 @@ check(!controls.panel.hasShadow &&
       "Individual transparent controls float above the lyrics without detached shadows")
 check(controls.panel.ignoresMouseEvents && !controls.panel.isVisible,
       "Full-size toolbar layout frame cannot intercept mouse events")
-check(controls.controlPanels.count == 5 &&
+check(controls.controlPanels.count == 8 &&
       controls.controlPanels.allSatisfy {
           !$0.hasShadow && !$0.isOpaque && !$0.hidesOnDeactivate &&
           $0.collectionBehavior.contains(.canJoinAllSpaces) && $0.animationBehavior == .none
       },
       "Only individual 34-point control windows can receive clicks")
+controls.follow(overlay: twoRowOverlay, visibleFrames: [screen])
+check(controls.controlPanels[5].frame.midY > controls.controlPanels[0].frame.midY,
+      "Playback controls sit above the lower row of management actions")
+check(controls.controlPanels[5].contentView!.accessibilityLabel() == "上一首" &&
+      controls.controlPanels[7].contentView!.accessibilityLabel() == "下一首",
+      "Transport controls have accessible names")
+controls.setPlaybackAvailability(previous: false, toggle: .unavailable, next: false)
+check([5, 6, 7].allSatisfy { !(controls.controlPanels[$0].contentView! as! NSButton).isEnabled },
+      "Transport controls are disabled until reliable menu actions are available")
+controls.setPlaybackAvailability(previous: true, toggle: .pause, next: true)
+check([5, 6, 7].allSatisfy { (controls.controlPanels[$0].contentView! as! NSButton).isEnabled } &&
+      controls.controlPanels[6].contentView!.accessibilityLabel() == "暂停",
+      "An available playing state exposes a pause control")
 let handle = controls.controlPanels[0].contentView!
 check(handle.hitTest(NSPoint(x: 17, y: 16)) === handle,
       "Drag handle receives pointer input in its own small panel")
@@ -209,12 +236,25 @@ var tappedCollapse = 0
 controls.onToggleLock = { tappedLock += 1 }
 controls.onToggleSettings = { tappedSettings += 1 }
 controls.onToggleCollapsed = { tappedCollapse += 1 }
+var tappedPrevious = 0
+var tappedPlayback = 0
+var tappedNext = 0
+controls.onPrevious = { tappedPrevious += 1 }
+controls.onTogglePlayback = { tappedPlayback += 1 }
+controls.onNext = { tappedNext += 1 }
 let toolbarButtons = controls.controlPanels.compactMap { $0.contentView as? NSButton }
 toolbarButtons.first(where: { $0.accessibilityLabel() == "锁定歌词位置" })!.performClick(nil)
 toolbarButtons.first(where: { $0.accessibilityLabel() == "设置歌词样式" })!.performClick(nil)
 toolbarButtons.first(where: { $0.accessibilityLabel() == "收起工具条" })!.performClick(nil)
 check(tappedLock == 1 && tappedSettings == 1 && tappedCollapse == 1,
       "Toolbar actions dispatch to their owning controller")
+for index in [5, 6, 7] { (controls.controlPanels[index].contentView! as! NSButton).performClick(nil) }
+check(tappedPrevious == 1 && tappedPlayback == 1 && tappedNext == 1,
+      "All three transport controls dispatch to their controller")
+controls.setPlaybackAvailability(previous: false, toggle: .unavailable, next: false)
+for index in [5, 6, 7] { (controls.controlPanels[index].contentView! as! NSButton).performClick(nil) }
+check(tappedPrevious == 1 && tappedPlayback == 1 && tappedNext == 1,
+      "Unavailable transport controls cannot dispatch actions")
 controls.setLocked(true)
 check(controls.controlPanels[0].ignoresMouseEvents &&
       controls.controlPanels.dropFirst().allSatisfy { !$0.ignoresMouseEvents },
@@ -227,22 +267,22 @@ handle.mouseDragged(with: movementEvent(x: 35, y: 22, deltaX: 25, deltaY: -12))
 check(near(dragDelta.x, 0) && near(dragDelta.y, 0), "Locked drag handle never moves lyrics")
 controls.setCollapsed(true)
 check(near(controls.panel.frame.width, 38), "Collapsed toolbar width")
-controls.follow(overlay: NSRect(x: 100, y: 100, width: 760, height: 112),
+controls.follow(overlay: NSRect(x: 100, y: 100, width: 860, height: 176),
                 visibleFrames: [screen])
-check(near(controls.panel.frame.maxX, 850) && near(controls.panel.frame.maxY, 206),
-      "Collapsed button stays at the inside upper-right edge")
+check(near(controls.panel.frame.maxX, 950) && near(controls.panel.frame.minY, 148),
+      "Collapsed button stays in the inside lower-right rail")
 toolbarButtons.first(where: { $0.accessibilityLabel() == "展开歌词工具条" })!.performClick(nil)
 check(tappedCollapse == 2, "Collapsed toolbar exposes an expand action")
 controls.setCollapsed(false)
-check(near(controls.panel.frame.width, 166), "Restored toolbar width")
-controls.follow(overlay: NSRect(x: 100, y: 100, width: 760, height: 112),
+check(near(controls.panel.frame.width, 166) && near(controls.panel.frame.height, 80), "Restored toolbar width")
+controls.follow(overlay: NSRect(x: 100, y: 100, width: 860, height: 176),
                 visibleFrames: [screen])
-check(near(controls.panel.frame.origin.x, 684) && near(controls.panel.frame.origin.y, 168),
+check(near(controls.panel.frame.origin.x, 784) && near(controls.panel.frame.origin.y, 148),
       "Interactive toolbar follows the lyric panel on its inside")
 controls.setVisible(true)
 let activeWindows = controls.controlPanels.filter(\.isVisible)
-check(activeWindows.count == 4 && activeWindows.allSatisfy { $0.frame.width == 34 },
-      "Expanded toolbar exposes four small hit windows rather than one large one")
+check(activeWindows.count == 7 && activeWindows.allSatisfy { $0.frame.width == 34 },
+      "Expanded toolbar exposes seven small hit windows rather than one large one")
 check(activeWindows.allSatisfy { !$0.ignoresMouseEvents || $0 === controls.controlPanels[0] },
       "Icon panels remain interactive")
 let gap = NSPoint(x: controls.panel.frame.minX + 43, y: controls.panel.frame.minY + 20)
@@ -255,6 +295,8 @@ check(controls.controlPanels.filter(\.isVisible).count == 1 &&
       "Collapsed toolbar leaves only one small hit window")
 check(near(controls.controlPanels[4].frame.maxX, controls.panel.frame.maxX - 2),
       "The collapsed hit window stays on the same right edge")
+check(near(controls.controlPanels[4].frame.minY, controls.panel.frame.minY + 3),
+      "The collapsed hit window stays in the lower row")
 controls.setVisible(false)
 check(controls.controlPanels.allSatisfy { !$0.isVisible },
       "Hiding lyrics also removes all toolbar hit targets")
@@ -263,8 +305,8 @@ check(controls.controlPanels.allSatisfy { !$0.isVisible },
 // Window ordering and ignoresMouseEvents cross a process boundary, so wait for
 // WindowServer's state rather than assuming the next instruction sees the change.
 let liveScreen = NSScreen.main!.visibleFrame
-let liveOverlay = NSRect(x: liveScreen.midX - 380, y: liveScreen.midY - 56,
-                         width: 760, height: 112)
+let liveOverlay = NSRect(x: liveScreen.midX - 430, y: liveScreen.midY - 88,
+                         width: 860, height: 176)
 let lyricPanel = NSPanel(contentRect: liveOverlay, styleMask: [.borderless, .nonactivatingPanel],
                          backing: .buffered, defer: false)
 lyricPanel.level = .floating
@@ -287,7 +329,7 @@ func awaitMouseState(_ message: String, _ matches: () -> Bool) {
     fatalError(message)
 }
 func expandedButtonsReceiveClicks() -> Bool {
-    controls.controlPanels.prefix(4).allSatisfy { window in
+    controls.controlPanels.enumerated().filter { $0.offset != 4 }.allSatisfy { _, window in
         mouseTarget(NSPoint(x: window.frame.midX, y: window.frame.midY)) == window.windowNumber
     }
 }
@@ -295,7 +337,7 @@ let dragCenter = NSPoint(x: controls.controlPanels[0].frame.midX,
                          y: controls.controlPanels[0].frame.midY)
 let lockCenter = NSPoint(x: controls.controlPanels[1].frame.midX,
                          y: controls.controlPanels[1].frame.midY)
-awaitMouseState("All four buttons receive clicks; the gap reaches unlocked lyrics") {
+awaitMouseState("All seven buttons receive clicks; the gap reaches unlocked lyrics") {
     expandedButtonsReceiveClicks() && mouseTarget(clickGap) == lyricPanel.windowNumber
 }
 // Run a native down/up sequence through the small panel, not NSButton.performClick.
@@ -340,7 +382,7 @@ awaitMouseState("Collapsed toolbar retains its clickable expand button") {
     mouseTarget(dragCenter) == lyricPanel.windowNumber
 }
 controls.setCollapsed(false)
-awaitMouseState("All controls can receive clicks after expanding again") {
+awaitMouseState("All seven controls can receive clicks after expanding again") {
     expandedButtonsReceiveClicks() && mouseTarget(clickGap) == lyricPanel.windowNumber
 }
 controls.setLocked(true)
@@ -355,7 +397,7 @@ controls.setVisible(false)
 lyricPanel.orderOut(nil)
 
 controls.setLocked(false)
-var overlayForDrag = NSRect(x: 100, y: 100, width: 760, height: 112)
+var overlayForDrag = NSRect(x: 100, y: 100, width: 860, height: 176)
 controls.onDrag = { delta in
     overlayForDrag.origin.x += delta.x
     overlayForDrag.origin.y += delta.y
@@ -370,7 +412,7 @@ handle.mouseDragged(with: queuedB)
 check(near(overlayForDrag.minX, 135) && near(overlayForDrag.minY, 105),
       "Queued drag events move by their independent deltas, not moving-window coordinates")
 
-let lyricView = LyricsView(frame: NSRect(x: 0, y: 0, width: 760, height: 112))
+let lyricView = LyricsView(frame: NSRect(x: 0, y: 0, width: 860, height: 176))
 lyricView.applyStyle(OverlayStyle(backgroundRGB: "#123456", textRGB: "#F0E0D0", chipRGB: "#112233",
                                   backgroundOpacity: 0.15, chipOpacity: 0.55))
 lyricView.show(primary: "合成歌词", secondary: "合成副句", fraction: 0.5, active: true)

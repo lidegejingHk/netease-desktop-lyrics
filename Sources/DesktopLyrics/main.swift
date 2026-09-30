@@ -47,7 +47,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     }
 
     private func configureWindow() {
-        let frame = NSRect(x: 0, y: 0, width: 760, height: 112)
+        let frame = NSRect(x: 0, y: 0, width: 860, height: 176)
         panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
