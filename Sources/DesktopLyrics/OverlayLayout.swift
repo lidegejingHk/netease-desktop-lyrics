@@ -4,7 +4,8 @@ import AppKit
 enum OverlayLayout {
     static let outerSize = NSSize(width: 880, height: 256)
     static let lyricSize = NSSize(width: 848, height: 126)
-    static let toolbarSize = NSSize(width: 160, height: 36)
+    /// Three right-aligned tool icons: lock, style and collapse.
+    static let toolbarSize = NSSize(width: 120, height: 36)
     static let collapsedToolbarSize = NSSize(width: 42, height: 36)
     static let playbackSize = NSSize(width: 132, height: 32)
     static let railSize = NSSize(width: 832, height: 28)

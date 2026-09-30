@@ -10,12 +10,12 @@
 
 ---
 
-### Task 1: 拖动把手图标
+### Task 1: 拖动把手图标（已被用户决定推翻：直接删除把手）
 
-**Files:** `Sources/DesktopLyrics/OverlayControls.swift`, `tests/OverlayAppearanceTests/main.swift`.
+**Files:** `Sources/DesktopLyrics/OverlayControls.swift`, `Sources/DesktopLyrics/OverlayLayout.swift`, `tests/OverlayAppearanceTests/main.swift`.
 
-- [x] 测试断言把手子视图是图片视图、图像非空、tint 等于文字颜色、锁定后透明度低于 0.5 且仍可点击穿透；先红灯。
-- [x] 换成 `arrow.up.and.down.and.arrow.left.and.right`，保留 42%/94% 透明度与穿透；复跑 Swift 测试。
+- [x] 先按「换成四向移动符号」实现并测试通过（提交 `0e55355`）。
+- [x] 用户随后决定**去掉整个把手**：删除 `OverlayDragHandle` 与对应面板，`controlPanels` 由 8 个变 7 个（0–2 工具、3 展开、4–6 播放），`toolbarSize` 160 → 120；把手专属断言删除，「队列事件不重复计数」的守卫改用背景拖动路径继续覆盖；复跑 Swift 测试。
 
 ### Task 2: 样式面板的关闭方式
 
@@ -25,6 +25,13 @@
 - [x] 用 `NSPanel` 子类处理 Esc／⌘W，本地与全局鼠标监视器处理外部点击（面板关闭时移除监视器）；复跑 Swift 测试。
 
 实测备注：`StyleSettingsWindow.handleDismissKey` 同时处理 Esc（keyCode 53）与 ⌘W，`cancelOperation` 兜住第一响应者吃掉 Esc 的情况；外部点击用本地+全局鼠标监视器，`isWatchingOutsideClicks` 让测试能断言监视器随关闭释放。
+
+### Task 2b: 样式面板不可拖动、无关闭按钮、失焦即关
+
+**Files:** `Sources/DesktopLyrics/StyleSettingsPanel.swift`, `tests/OverlayAppearanceTests/main.swift`, `README.md`.
+
+- [ ] 测试断言 `styleMask` 不含 `.closable`、`isMovable` 为 false、失焦（非颜色面板取得 key）时关闭、颜色面板取得 key 时不关；先红灯。
+- [ ] 去掉 `.closable`、设 `isMovable = false`，实现 `windowDidResignKey` 关闭及其可测的判定函数；更新 README；复跑测试。
 
 ### Task 3: 颜色面板定位
 
