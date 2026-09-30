@@ -14,8 +14,10 @@
 
 **Files:** `Sources/DesktopLyrics/OverlayFrameView.swift`, `tests/OverlayAppearanceTests/main.swift`.
 
-- [ ] 添加窗口顺序测试：实例化背景、歌词窗及声浪，按启动顺序 order front，然后重复 `setFrameOrigin`/`follow`；从 `CGWindowListCopyWindowInfo` 确认两内容窗在背景之前；锁定与解锁后亦成立。
-- [ ] 运行 `./scripts/test-swift.sh` 确认红灯，随后让背景窗层级低于 `.floating`，不改变按钮层级/拖动约束；复跑 Swift 测试并截图确认。
+- [x] 添加窗口顺序测试：实例化背景、歌词窗及声浪，按启动顺序 order front，然后重复 `setFrameOrigin`/`follow`；从 `CGWindowListCopyWindowInfo` 确认两内容窗在背景之前；锁定与解锁后亦成立。
+- [x] 运行 `./scripts/test-swift.sh` 确认红灯，随后让背景窗层级低于 `.floating`，不改变按钮层级/拖动约束；复跑 Swift 测试并截图确认。
+
+实测备注：单纯 `setFrameOrigin`/`follow` 不会改变同层顺序，红灯来自**鼠标按下**——AppKit 把被点击的窗口提到同层最前，点在外框空白后 91% 不透明的背景就盖住歌词与声浪（隔离验证：只把层级改回 `.floating`、屏蔽层级断言时，新断言报 "Clicking the background never hides lyrics or the waveform behind it"）。修复为 `OverlayFrame.backgroundLevel = .floating - 1`，锁定与解锁都对新断言成立。用真实 `CGEvent` 拖动独立预览包后截图复核：歌词两行、翻译、播放三键与声浪均在背景之前。
 
 ### Task 2: 整首歌曲声浪进度
 

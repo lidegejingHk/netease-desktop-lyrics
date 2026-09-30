@@ -514,6 +514,9 @@ check(near(overlayForDrag.minX, 151) && near(overlayForDrag.minY, 185),
 
 let outer = OverlayFrame()
 outer.follow(lyrics: lyricRect)
+check(outer.panel.level.rawValue > NSWindow.Level.normal.rawValue &&
+      outer.panel.level.rawValue < NSWindow.Level.floating.rawValue,
+      "The background must stay below floating lyric and waveform windows during every drag")
 check(outer.panel.frame == outerRect && !outer.panel.ignoresMouseEvents &&
       outer.panel.contentView!.layer!.cornerRadius == 21,
       "The unified outer frame accepts pointer input when unlocked")
@@ -764,6 +767,78 @@ controls.setLocked(false)
 awaitMouseState("Unlocking immediately restores whole-background hit targets") {
     mouseTarget(emptyBackground) == outer.panel.windowNumber
 }
+// WindowServer stacking order: the one opaque background must stay behind the lyric
+// and waveform panels. Clicking the exposed background ring raised it above both
+// same-level panels and hid the lyrics behind the 91%-opaque fill, so assert the
+// published window order instead of trusting view or level bookkeeping.
+func windowServerOrder(_ windows: [NSWindow]) -> [Int] {
+    let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+    let wanted = Set(windows.map(\.windowNumber))
+    return info.compactMap { entry in
+        guard let pid = entry[kCGWindowOwnerPID as String] as? Int, pid == Int(getpid()),
+              let number = entry[kCGWindowNumber as String] as? Int, wanted.contains(number) else {
+            return nil
+        }
+        return number
+    }
+}
+func contentAboveBackground() -> Bool {
+    let order = windowServerOrder([outer.panel, lyricPanel, rail.panel])
+    guard let background = order.firstIndex(of: outer.panel.windowNumber),
+          let lyric = order.firstIndex(of: lyricPanel.windowNumber),
+          let waveform = order.firstIndex(of: rail.panel.windowNumber) else { return false }
+    return lyric < background && waveform < background
+}
+func awaitStackingOrder(_ message: String) {
+    let deadline = Date().addingTimeInterval(2)
+    while Date() < deadline {
+        if contentAboveBackground() { return }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+    }
+    fatalError(message)
+}
+// The native AppKit path that reorders windows inside one level: a mouse-down on
+// the exposed background ring, followed by a real drag and release.
+func dragBackgroundRing() {
+    let start = NSPoint(x: outer.panel.frame.minX + 6, y: outer.panel.frame.midY)
+    let end = NSPoint(x: start.x + 30, y: start.y - 18)
+    let down = NSEvent.mouseEvent(with: .leftMouseDown, location: start, modifierFlags: [],
+        timestamp: 0, windowNumber: outer.panel.windowNumber, context: nil, eventNumber: 0,
+        clickCount: 1, pressure: 1)!
+    let drag = NSEvent.mouseEvent(with: .leftMouseDragged, location: end, modifierFlags: [],
+        timestamp: 0.01, windowNumber: outer.panel.windowNumber, context: nil, eventNumber: 1,
+        clickCount: 1, pressure: 1)!
+    let up = NSEvent.mouseEvent(with: .leftMouseUp, location: end, modifierFlags: [],
+        timestamp: 0.02, windowNumber: outer.panel.windowNumber, context: nil, eventNumber: 2,
+        clickCount: 1, pressure: 0)!
+    outer.panel.sendEvent(down)
+    outer.panel.sendEvent(drag)
+    outer.panel.sendEvent(up)
+}
+outer.onDrag = { delta in
+    let proposed = lyricPanel.frame.offsetBy(dx: delta.x, dy: delta.y)
+    lyricPanel.setFrameOrigin(OverlayLayout.constrainedOrigin(for: proposed, visibleFrames: [screen]))
+    outer.follow(lyrics: lyricPanel.frame)
+    rail.follow(lyrics: lyricPanel.frame)
+}
+lyricPanel.setFrameOrigin(liveOverlay.origin)
+lyricPanel.orderFrontRegardless()
+outer.follow(lyrics: liveOverlay)
+rail.follow(lyrics: liveOverlay)
+awaitStackingOrder("Lyrics and the waveform start in front of the only background")
+for _ in 0..<3 {
+    let origin = lyricPanel.frame.origin
+    lyricPanel.setFrameOrigin(NSPoint(x: origin.x + 6, y: origin.y - 4))
+    outer.follow(lyrics: lyricPanel.frame)
+    rail.follow(lyrics: lyricPanel.frame)
+}
+awaitStackingOrder("Repeated repositioning keeps lyrics and the waveform in front")
+dragBackgroundRing()
+awaitStackingOrder("Clicking the background never hides lyrics or the waveform behind it")
+outer.setLocked(true)
+dragBackgroundRing()
+awaitStackingOrder("A locked background that passes clicks through still stays behind")
+outer.setLocked(false)
 rail.setVisible(false)
 outer.setVisible(false)
 controls.setVisible(false)

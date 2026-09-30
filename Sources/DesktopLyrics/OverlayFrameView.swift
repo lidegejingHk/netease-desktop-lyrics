@@ -3,6 +3,11 @@ import AppKit
 /// The only visual background for controls, lyrics and waveform.
 /// Unlocked empty space accepts drags; locking lets desktop clicks pass through.
 final class OverlayFrame {
+    /// One step below `.floating`: above ordinary windows, below every content panel.
+    /// AppKit raises a window to the front of its own level on mouse-down, so a
+    /// background that shared `.floating` covered the lyric and waveform panels.
+    static let backgroundLevel = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue - 1)
+
     let panel: NSPanel
     private let background: OverlayBackgroundView
     var onDrag: ((NSPoint) -> Void)? {
@@ -13,7 +18,7 @@ final class OverlayFrame {
         let rect = NSRect(origin: .zero, size: OverlayLayout.outerSize)
         panel = NSPanel(contentRect: rect, styleMask: [.borderless, .nonactivatingPanel],
                         backing: .buffered, defer: false)
-        panel.level = .floating
+        panel.level = Self.backgroundLevel
         panel.animationBehavior = .none
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isOpaque = false
