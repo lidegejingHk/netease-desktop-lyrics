@@ -35,6 +35,21 @@ check(pausedMenu.allows(.previous) && pausedMenu.allows(.play) && pausedMenu.all
       !pausedMenu.allows(.pause) &&
       !PlaybackTransport.Availability.unavailable.allows(.next),
       "The controller only dispatches actions from the last verified menu state")
+let failedPrevious = pausedMenu.suppressing(.previous)
+check(!failedPrevious.allows(.previous) && failedPrevious.allows(.play) && failedPrevious.allows(.next),
+      "A failed previous press disables only that transport action")
+let failedPlay = pausedMenu.suppressing(.play)
+check(!failedPlay.allows(.play) && failedPlay.previous && failedPlay.next,
+      "A failed play press does not immediately re-enable the failed toggle")
+var failureLatch = PlaybackTransport.FailureLatch()
+failureLatch.record(.play, in: pausedMenu)
+check(!failureLatch.visibleState(for: pausedMenu).allows(.play) &&
+      !failureLatch.visibleState(for: pausedMenu).allows(.play),
+      "The same failing menu action stays disabled over repeated polling")
+let changedMenu = PlaybackTransport.Availability(previous: false, toggle: .pause, next: true)
+check(failureLatch.visibleState(for: changedMenu).allows(.pause) &&
+      failureLatch.failed == nil,
+      "A changed player menu clears a failed-action latch")
 let playingMenu = PlaybackTransport.availability([
     .init(role: "AXMenuItem", title: "暂停", enabled: true)
 ])

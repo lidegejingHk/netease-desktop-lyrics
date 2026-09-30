@@ -35,7 +35,7 @@ enum PlaybackTransport {
         }
     }
 
-    struct Availability {
+    struct Availability: Equatable {
         let previous: Bool
         let toggle: OverlayControls.PlaybackToggle
         let next: Bool
@@ -49,6 +49,31 @@ enum PlaybackTransport {
             case .pause: return toggle == .pause
             case .next: return next
             }
+        }
+
+        func suppressing(_ action: Action) -> Self {
+            switch action {
+            case .previous: return Self(previous: false, toggle: toggle, next: next)
+            case .play, .pause: return Self(previous: previous, toggle: .unavailable, next: next)
+            case .next: return Self(previous: previous, toggle: toggle, next: false)
+            }
+        }
+    }
+
+    /// Keep a failed menu action disabled while the player still reports the
+    /// same menu state. A real menu-state change clears the failure latch.
+    struct FailureLatch {
+        private(set) var failed: (action: Action, state: Availability)?
+
+        mutating func record(_ action: Action, in state: Availability) {
+            failed = (action, state)
+        }
+
+        mutating func visibleState(for current: Availability) -> Availability {
+            guard let failed else { return current }
+            if failed.state == current { return current.suppressing(failed.action) }
+            self.failed = nil
+            return current
         }
     }
 
