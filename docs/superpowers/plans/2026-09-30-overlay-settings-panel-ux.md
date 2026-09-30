@@ -30,13 +30,17 @@
 
 **Files:** `Sources/DesktopLyrics/StyleSettingsPanel.swift`, `tests/OverlayAppearanceTests/main.swift`, `README.md`.
 
-- [ ] 测试纯函数：默认放样式面板左侧并与色块中线对齐；左侧放不下时放右侧；上下越界时夹紧到可见区域。
-- [ ] `AnchoredColorWell` 在 `mouseDown` 里先把共享颜色面板摆好再 `super`；更新 README 描述关闭方式与颜色面板位置；复跑测试。
+- [x] 测试纯函数：默认放样式面板左侧并与色块中线对齐；左侧放不下时放右侧；上下越界时夹紧到可见区域。
+- [x] `AnchoredColorWell` 在 `mouseDown` 里先把共享颜色面板摆好再 `super`；更新 README 描述关闭方式与颜色面板位置；复跑测试。
+
+实测备注：真实预览包日志确认 `mouseDown` 时先算出 anchor（如 `(1064, 368.5)`）再 `super`，颜色面板随后在锚点显示（`visible=true frame=(1064, 368, 250, 397)`，正好贴在样式面板左侧、与被点色块对齐）；点样式面板内与颜色面板内都不会关闭，点其他 App 或在浮层上点击会关闭，Esc 与 ⌘W 各关闭一次。
 
 ### Task 4: 验收与本地提交
 
+实测备注：预览包已用 `--stdin` 合成事件 + 真实 `CGEvent` 点击/按键逐项验证并把日志与截图留档；产物已移到废纸篓。
+
 **Files:** `README.md`, above implementation/tests/docs.
 
-- [ ] `./scripts/test-swift.sh`、`xcrun swiftc -target arm64-apple-macos13.0 -warnings-as-errors -framework AppKit -framework Foundation -framework ApplicationServices -typecheck Sources/DesktopLyrics/*.swift`、`cargo test`、`cargo fmt --all --check`、`cargo clippy --all-targets -- -D warnings`、`git diff --check`。
-- [ ] 独立 `dist-preview` 预览包截图确认把手图标、面板关闭方式与颜色面板位置；停预览并清理预览产物。
-- [ ] 自审监视器生命周期、颜色面板豁免与布局回归；代码每阶段完成后本地 commit，最后工作区干净，不推送。
+- [x] `./scripts/test-swift.sh`、`xcrun swiftc -target arm64-apple-macos13.0 -warnings-as-errors -framework AppKit -framework Foundation -framework ApplicationServices -typecheck Sources/DesktopLyrics/*.swift`、`cargo test`、`cargo fmt --all --check`、`cargo clippy --all-targets -- -D warnings`、`git diff --check`。
+- [x] 独立 `dist-preview` 预览包截图确认把手图标、面板关闭方式与颜色面板位置；停预览并清理预览产物。
+- [x] 自审监视器生命周期、颜色面板豁免与布局回归；代码每阶段完成后本地 commit，最后工作区干净，不推送。

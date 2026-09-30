@@ -971,6 +971,41 @@ settings.panel.contentView!.subviews.compactMap { $0 as? NSButton }
     .first(where: { $0.title == "恢复默认" })!.performClick(nil)
 check(sentStyle == .defaultValue, "Reset restores all original colors and opacity")
 
+// The shared colour panel keeps its own history position, so it must be placed
+// next to the swatch that opened it before it appears.
+let swatch = NSRect(x: 1200, y: 300, width: 96, height: 28)
+let besidePanel = NSRect(x: 900, y: 200, width: 380, height: 310)
+let colorPanelSize = NSSize(width: 260, height: 360)
+let leftOrigin = StyleSettingsPanel.colorPanelOrigin(
+    well: swatch, panel: besidePanel, colorPanel: colorPanelSize, visibleFrames: [screen])
+check(near(leftOrigin.x, besidePanel.minX - StyleSettingsPanel.colorPanelGap - colorPanelSize.width) &&
+      near(leftOrigin.y, swatch.midY - colorPanelSize.height / 2),
+      "The colour panel opens beside the settings panel, centred on its swatch")
+let rightOrigin = StyleSettingsPanel.colorPanelOrigin(
+    well: NSRect(x: 320, y: 300, width: 96, height: 28),
+    panel: NSRect(x: 20, y: 200, width: 380, height: 310),
+    colorPanel: colorPanelSize, visibleFrames: [screen])
+check(near(rightOrigin.x, 410),
+      "A settings panel against the left screen edge puts the colour panel on the right")
+check(near(StyleSettingsPanel.colorPanelOrigin(
+        well: NSRect(x: 700, y: 5, width: 96, height: 28), panel: besidePanel,
+        colorPanel: colorPanelSize, visibleFrames: [screen]).y, 8) &&
+      near(StyleSettingsPanel.colorPanelOrigin(
+        well: NSRect(x: 700, y: 590, width: 96, height: 28), panel: besidePanel,
+        colorPanel: colorPanelSize, visibleFrames: [screen]).y, screen.maxY - colorPanelSize.height - 8),
+      "The colour panel is clamped inside the visible area near the screen edges")
+guard let anchoredWell = wells.first(where: { $0.accessibilityLabel() == "浮层背景颜色" })
+    as? AnchoredColorWell else {
+    fatalError("Colour swatches must anchor the shared colour panel")
+}
+settings.panel.setFrameOrigin(NSPoint(x: 700, y: 200))
+let anchor = anchoredWell.colorPanelAnchor?()
+check(anchor != nil &&
+      (anchor!.x <= settings.panel.frame.minX - StyleSettingsPanel.colorPanelGap ||
+       anchor!.x >= settings.panel.frame.maxX + StyleSettingsPanel.colorPanelGap) &&
+      NSScreen.screens.contains(where: { $0.visibleFrame.contains(anchor!) }),
+      "Every swatch anchors the shared colour panel beside the settings panel")
+
 // The panel opens from the toolbar, so it must close the way a popover does
 // instead of only through its title-bar button.
 func keyEvent(_ characters: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> NSEvent {
