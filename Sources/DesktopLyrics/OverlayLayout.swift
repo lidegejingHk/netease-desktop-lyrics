@@ -13,6 +13,9 @@ enum OverlayLayout {
     static let toolbarRightInset: CGFloat = 16
     static let toolbarTopInset: CGFloat = 10
     static let railInset = NSPoint(x: 24, y: 12)
+    static let titleLeftInset: CGFloat = 24
+    static let titleGap: CGFloat = 12
+    static let titleHeight: CGFloat = 18
 
     static func outerFrame(for lyrics: NSRect) -> NSRect {
         NSRect(x: lyrics.minX - lyricInset.x, y: lyrics.minY - lyricInset.y,
@@ -23,6 +26,15 @@ enum OverlayLayout {
     static func toolbarFrame(for lyrics: NSRect, collapsed: Bool = false) -> NSRect {
         let size = collapsed ? collapsedToolbarSize : toolbarSize
         return NSRect(origin: ToolbarPlacement.origin(overlay: lyrics, size: size), size: size)
+    }
+
+    /// One truncated title line in the top row, ending before the tool icons.
+    static func titleFrame(for lyrics: NSRect) -> NSRect {
+        let outer = outerFrame(for: lyrics)
+        let tools = toolbarFrame(for: lyrics)
+        let x = outer.minX + titleLeftInset
+        return NSRect(x: x, y: tools.midY - titleHeight / 2,
+                      width: max(0, tools.minX - titleGap - x), height: titleHeight)
     }
 
     static func playbackFrame(for lyrics: NSRect) -> NSRect {

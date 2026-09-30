@@ -9,6 +9,8 @@ final class OverlayFrame {
     static let backgroundLevel = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue - 1)
 
     let panel: NSPanel
+    /// The verified song title: one truncated line that never takes pointer input.
+    private(set) var titleLabel: NSTextField = OverlayTitleLabel(labelWithString: "")
     private let background: OverlayBackgroundView
     var onDrag: ((NSPoint) -> Void)? {
         didSet { background.onDrag = onDrag }
@@ -32,12 +34,37 @@ final class OverlayFrame {
         background.layer?.cornerRadius = 21
         background.layer?.masksToBounds = true
         background.layer?.borderWidth = 1
+        titleLabel.alignment = .left
+        titleLabel.maximumNumberOfLines = 1
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.drawsBackground = false
+        titleLabel.isEditable = false
+        titleLabel.isSelectable = false
+        titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        titleLabel.isHidden = true
+        background.addSubview(titleLabel)
+
         panel.contentView = background
         applyStyle(.defaultValue)
     }
 
     func follow(lyrics: NSRect) {
         panel.setFrame(OverlayLayout.outerFrame(for: lyrics), display: true)
+        layoutTitle(for: lyrics)
+    }
+
+    /// Empty or whitespace-only titles hide the row instead of drawing a blank line.
+    func show(title: String?) {
+        let text = (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        titleLabel.stringValue = text
+        titleLabel.setAccessibilityLabel(text)
+        titleLabel.isHidden = text.isEmpty
+    }
+
+    private func layoutTitle(for lyrics: NSRect) {
+        let outer = OverlayLayout.outerFrame(for: lyrics)
+        titleLabel.frame = OverlayLayout.titleFrame(for: lyrics)
+            .offsetBy(dx: -outer.minX, dy: -outer.minY)
     }
 
     func applyStyle(_ style: OverlayStyle) {
@@ -47,6 +74,7 @@ final class OverlayFrame {
             fill.withAlphaComponent(style.backgroundOpacity).cgColor
         background.layer?.borderColor =
             tint.withAlphaComponent(min(0.24, style.backgroundOpacity * 0.22)).cgColor
+        titleLabel.textColor = tint.withAlphaComponent(0.72)
     }
 
     func setLocked(_ locked: Bool) {
@@ -56,6 +84,11 @@ final class OverlayFrame {
     func setVisible(_ visible: Bool) {
         if visible { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
     }
+}
+
+/// Visual only: every click falls through to the draggable background beneath it.
+private final class OverlayTitleLabel: NSTextField {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 /// Keep drag tracking in the background view instead of moving its panel directly.

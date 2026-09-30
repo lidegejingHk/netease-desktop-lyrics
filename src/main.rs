@@ -1,7 +1,7 @@
 use netease_lyrics_rs::{
     accessibility::{self, AxError},
-    lyrics::{validate_track_id, LyricsError, LyricsProvider},
-    lyrics_stream::{Event, LoadRequest, LyricsSession},
+    lyrics::{fetch_title, validate_track_id, LyricsError, LyricsProvider, TitleError},
+    lyrics_stream::{Event, LoadRequest, LyricsSession, TitleRequest},
     playback::PlaybackTracker,
     process,
     reader::Reader,
@@ -141,9 +141,17 @@ type LyricsResult = (
     Result<netease_lyrics_rs::lrc::TimedLyrics, LyricsError>,
 );
 
+type TitleResult = (TitleRequest, Result<String, TitleError>);
+
 fn take_completed(session: &mut LyricsSession, receiver: &Receiver<LyricsResult>, now_ms: u64) {
     while let Ok((request, result)) = receiver.try_recv() {
         session.receive(&request, result, now_ms);
+    }
+}
+
+fn take_titles(session: &mut LyricsSession, receiver: &Receiver<TitleResult>) {
+    while let Ok((request, result)) = receiver.try_recv() {
+        session.receive_title(&request, result);
     }
 }
 
@@ -159,6 +167,15 @@ fn start_request(request: LoadRequest, sender: Sender<LyricsResult>) {
     });
 }
 
+fn start_title_request(request: TitleRequest, sender: Sender<TitleResult>) {
+    // The session, not this thread, decides whether a late title still belongs to
+    // the current song.
+    thread::spawn(move || {
+        let result = fetch_title(&request.track_id);
+        let _ = sender.send((request, result));
+    });
+}
+
 fn stream(
     reader: &mut Reader,
     tracker: &mut PlaybackTracker,
@@ -169,6 +186,7 @@ fn stream(
 ) {
     let mut session = LyricsSession::new();
     let (sender, receiver) = mpsc::channel();
+    let (title_sender, title_receiver) = mpsc::channel();
     let stdout = io::stdout();
     let mut output = stdout.lock();
     for index in 0..samples {
@@ -177,6 +195,7 @@ fn stream(
         match snapshot {
             Ok(snapshot) => {
                 take_completed(&mut session, &receiver, now_ms);
+                take_titles(&mut session, &title_receiver);
                 let event = session.observe(&snapshot, now_ms);
                 if write_event(&mut output, &event).is_err() {
                     return;
@@ -184,9 +203,13 @@ fn stream(
                 if let Some(request) = session.take_request() {
                     start_request(request, sender.clone());
                 }
+                if let Some(request) = session.take_title_request() {
+                    start_title_request(request, title_sender.clone());
+                }
             }
             Err(diagnostic) => {
                 take_completed(&mut session, &receiver, now_ms);
+                take_titles(&mut session, &title_receiver);
                 if write_event(
                     &mut output,
                     &session.unavailable(diagnostic_reason(&diagnostic)),

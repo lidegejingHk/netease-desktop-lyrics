@@ -169,6 +169,14 @@ check(outerRect.contains(lyricRect) && envelope == outerRect &&
 check(ToolbarPlacement.origin(overlay: lyricRect,
                               size: OverlayControls.expandedSize) == toolbarRect.origin,
       "Toolbar placement uses the enclosing frame's top-right inset")
+let titleRect = OverlayLayout.titleFrame(for: lyricRect)
+check(near(titleRect.minX, outerRect.minX + 24) &&
+      near(titleRect.maxX, toolbarRect.minX - 12) &&
+      near(titleRect.midY, toolbarRect.midY) &&
+      outerRect.contains(titleRect) &&
+      !titleRect.intersects(toolbarRect) && !titleRect.intersects(lyricRect) &&
+      !titleRect.intersects(railRect) && !titleRect.intersects(playbackRect),
+      "The single-line song title shares the top row and never reaches the tools")
 let secondScreen = NSRect(x: 1000, y: -200, width: 1200, height: 700)
 check(OverlayVisibility.origin(for: envelope, visibleFrames: [screen]) == envelope.origin,
       "Keep the complete framed group on screen without jumping")
@@ -520,6 +528,29 @@ check(outer.panel.level.rawValue > NSWindow.Level.normal.rawValue &&
 check(outer.panel.frame == outerRect && !outer.panel.ignoresMouseEvents &&
       outer.panel.contentView!.layer!.cornerRadius == 21,
       "The unified outer frame accepts pointer input when unlocked")
+outer.show(title: nil)
+check(outer.titleLabel.isHidden && outer.titleLabel.stringValue.isEmpty,
+      "No verified title leaves the top-left row empty")
+outer.show(title: "   ")
+check(outer.titleLabel.isHidden && outer.titleLabel.stringValue.isEmpty,
+      "A blank title is never drawn")
+outer.show(title: String(repeating: "很长的合成歌名", count: 20))
+let titleWindowRect = outer.titleLabel.frame
+    .offsetBy(dx: outer.panel.frame.minX, dy: outer.panel.frame.minY)
+check(!outer.titleLabel.isHidden &&
+      outer.titleLabel.maximumNumberOfLines == 1 &&
+      outer.titleLabel.lineBreakMode == .byTruncatingTail &&
+      titleWindowRect == OverlayLayout.titleFrame(for: lyricRect) &&
+      !titleWindowRect.intersects(toolbarRect),
+      "A long title truncates to one reserved line instead of covering the tools")
+check(outer.titleLabel.accessibilityLabel() == outer.titleLabel.stringValue &&
+      outer.titleLabel.stringValue.hasPrefix("很长的合成歌名"),
+      "Assistive technology reads the same single-line title")
+let titlePoint = NSPoint(x: outer.titleLabel.frame.midX, y: outer.titleLabel.frame.midY)
+check(outer.titleLabel.hitTest(NSPoint(x: outer.titleLabel.bounds.midX,
+                                       y: outer.titleLabel.bounds.midY)) == nil &&
+      outer.panel.contentView!.hitTest(titlePoint) === outer.panel.contentView,
+      "The title never takes over dragging from the blank background")
 let lyricView = LyricsView(frame: NSRect(origin: .zero, size: OverlayLayout.lyricSize))
 let customStyle = OverlayStyle(backgroundRGB: "#123456", textRGB: "#F0E0D0",
                                chipRGB: "#112233", backgroundOpacity: 0.15, chipOpacity: 0.55)
@@ -614,11 +645,24 @@ check(primaryLabel.frame.minX >= 24 && primaryLabel.frame.maxX <= lyricView.boun
       near(primaryLabel.frame.midX, lyricView.bounds.midX) &&
       near(detailLabel.frame.midX, lyricView.bounds.midX),
       "Two-line lyrics use the full centered band, not an internal control rail")
+check(near(primaryLabel.frame.minY - detailLabel.frame.maxY, 12) &&
+      detailLabel.frame.minY >= 4 && primaryLabel.frame.maxY <= lyricView.bounds.maxY - 4,
+      "Shrunken wrapped lines keep the tight gap inside the lyric band")
 check(primaryLabel.frame.minY > detailLabel.frame.maxY &&
       primaryChip.frame.maxX <= lyricView.bounds.maxX - 24 &&
       detailChip.frame.maxX <= lyricView.bounds.maxX - 24 &&
       lyricRect.minY - playbackRect.maxY == 4,
       "Separate rows and their backgrounds never overlap or leave the lyric frame")
+check(near(primaryLabel.frame.minY - detailLabel.frame.maxY, 12) &&
+      detailLabel.frame.minY >= 4 && detailChip.frame.minY >= 4,
+      "The two visible lyric lines sit close together without reaching the playback row")
+lyricView.show(primary: "较短的主句", secondary: "短副句")
+lyricView.layout()
+check(near(primaryLabel.frame.minY - detailLabel.frame.maxY, 12) &&
+      detailLabel.frame.minY >= 4 &&
+      near(primaryLabel.frame.midX, lyricView.bounds.midX) &&
+      near(detailLabel.frame.midX, lyricView.bounds.midX),
+      "Short lines keep the same tight gap as wrapped lines")
 lyricView.show(primary: String(repeating: "特别长的合成歌词", count: 200), secondary: "")
 lyricView.layout()
 check(near(primaryLabel.font!.pointSize, 16) &&

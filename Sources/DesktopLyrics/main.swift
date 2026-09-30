@@ -11,6 +11,7 @@ private struct LyricEvent: Decodable {
     let held_paused: Bool?
     let position_ms: UInt64?
     let duration_ms: UInt64?
+    let title: String?
 }
 
 private final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
@@ -374,6 +375,8 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private func apply(_ event: LyricEvent) {
         switch event.kind {
         case "loading": showStatus("正在获取当前歌曲歌词…")
+        // A verified title arrives on its own, after the lyric request answered.
+        case "title": outerFrame.show(title: event.title)
         case "intro":
             content.show(primary: "♪ 即将开始", secondary: event.next ?? "")
             rail.show(fraction: wholeSongFraction(event), playing: event.playing == true)
@@ -413,6 +416,8 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private func showStatus(_ message: String) {
         content.show(primary: message, secondary: "")
         rail?.show(fraction: nil, playing: false)
+        // Every status means "no verified current song", so no old title survives.
+        outerFrame?.show(title: nil)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
