@@ -10,6 +10,7 @@ xcrun swiftc -target arm64-apple-macos13.0 -warnings-as-errors \
   "$root/Sources/DesktopLyrics/ToolbarPlacement.swift" \
   "$root/Sources/DesktopLyrics/OverlayVisibility.swift" \
   "$root/Sources/DesktopLyrics/LyricsView.swift" \
+  "$root/Sources/DesktopLyrics/WaveformView.swift" \
   "$root/Sources/DesktopLyrics/OverlayControls.swift" \
   "$root/Sources/DesktopLyrics/PlaybackTransport.swift" \
   "$root/Sources/DesktopLyrics/StyleSettingsPanel.swift" \
