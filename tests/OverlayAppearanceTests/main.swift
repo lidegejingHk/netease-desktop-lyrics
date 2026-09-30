@@ -49,6 +49,10 @@ check(!failureLatch.visibleState(for: pausedMenu).allows(.play) &&
 check(failureLatch.visibleState(for: .unavailable) == .unavailable &&
       !failureLatch.visibleState(for: pausedMenu).allows(.play),
       "A temporary AX read failure cannot re-enable an unchanged failed action")
+let partialChange = PlaybackTransport.Availability(previous: false, toggle: .play, next: true)
+check(!failureLatch.visibleState(for: partialChange).allows(.play) &&
+      failureLatch.hasFailure,
+      "Changing unrelated menu actions does not re-enable a failing play action")
 let changedMenu = PlaybackTransport.Availability(previous: false, toggle: .pause, next: true)
 check(failureLatch.visibleState(for: changedMenu).allows(.pause) &&
       failureLatch.failed == nil,

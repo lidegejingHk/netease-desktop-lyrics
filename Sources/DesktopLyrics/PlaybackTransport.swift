@@ -60,34 +60,30 @@ enum PlaybackTransport {
         }
     }
 
-    /// Keep a failed menu action disabled while the player still reports the
-    /// same menu state. A real menu-state change clears the failure latch.
+    /// Keep a failed menu action disabled while it stays actionable. A
+    /// meaningful change to that item, or an explicit retry, clears the latch.
     struct FailureLatch {
         private(set) var failed: (action: Action, state: Availability)?
-        private var interrupted = false
 
         var hasFailure: Bool { failed != nil }
 
         mutating func record(_ action: Action, in state: Availability) {
             failed = (action, state)
-            interrupted = false
         }
 
         mutating func visibleState(for current: Availability) -> Availability {
             guard let failed else { return current }
-            if failed.state == current { return current.suppressing(failed.action) }
             if current == .unavailable {
                 // A temporary AX timeout is not evidence that the player
                 // actually changed its menu; keep the failure until it returns.
-                interrupted = true
                 return current
             }
-            if interrupted && current.allows(failed.action) {
-                interrupted = false
+            if current.allows(failed.action) {
+                // Other menu entries can change independently of the failed
+                // item; do not re-enable it just because the song changed.
                 return current.suppressing(failed.action)
             }
             self.failed = nil
-            interrupted = false
             return current
         }
     }
@@ -156,10 +152,13 @@ enum PlaybackTransport {
         let menus = controlChildren.filter { role($0) == "AXMenu" }
         guard menus.count == 1, let menuItems = children(menus[0], max: 32) else { return nil }
         return menuItems.map { element in
-            Entry(item: Item(role: role(element) ?? "",
-                             title: title(element) ?? "",
+            let itemRole = role(element) ?? ""
+            let itemTitle = title(element) ?? ""
+            let knownAction = Action.allCases.contains { $0.titles.contains(itemTitle) }
+            return Entry(item: Item(role: itemRole,
+                             title: itemTitle,
                              enabled: bool(element, kAXEnabledAttribute as CFString),
-                             pressable: supportsPress(element)),
+                             pressable: itemRole == "AXMenuItem" && knownAction && supportsPress(element)),
                   element: element)
         }
     }
