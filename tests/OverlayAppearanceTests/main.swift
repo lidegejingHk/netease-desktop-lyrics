@@ -77,20 +77,21 @@ let above = ToolbarPlacement.origin(
     size: size,
     visibleFrames: [screen]
 )
-check(near(above.x, 694) && near(above.y, 220), "Toolbar above right edge")
+check(near(above.x, 684) && near(above.y, 168), "Toolbar inside the lyric frame at its upper right")
 let below = ToolbarPlacement.origin(
     overlay: NSRect(x: 700, y: 490, width: 760, height: 112),
     size: size,
     visibleFrames: [screen]
 )
-check(near(below.x, 826) && near(below.y, 444), "Below on top edge and clamped to right")
+check(near(below.x, 826) && near(below.y, 556),
+      "Toolbar stays inside the visible part of a lyric window at the screen edge")
 let secondScreen = NSRect(x: 1000, y: -200, width: 1200, height: 700)
 let moved = ToolbarPlacement.origin(
     overlay: NSRect(x: 1300, y: 100, width: 760, height: 112),
     size: size,
     visibleFrames: [screen, secondScreen]
 )
-check(near(moved.x, 1894) && near(moved.y, 220), "Follows active display")
+check(near(moved.x, 1884) && near(moved.y, 168), "Toolbar anchors within the active display")
 let safelyKept = OverlayVisibility.origin(
     for: NSRect(x: 1200, y: 100, width: 760, height: 112), visibleFrames: [screen, secondScreen]
 )
@@ -113,8 +114,26 @@ let isolated = ToolbarPlacement.origin(
 check(isolated.x >= secondScreen.minX && isolated.x + size.width <= secondScreen.maxX,
       "Fallback position remains on a visible display")
 
+let noDisplay = ToolbarPlacement.origin(
+    overlay: NSRect(x: 100, y: 100, width: 760, height: 112),
+    size: size, visibleFrames: []
+)
+check(near(noDisplay.x, 684) && near(noDisplay.y, 168),
+      "Display-less fallback remains inside the lyric frame")
+let collapsedPoint = ToolbarPlacement.origin(
+    overlay: NSRect(x: 100, y: 100, width: 760, height: 112),
+    size: OverlayControls.collapsedSize, visibleFrames: [screen]
+)
+check(near(collapsedPoint.x + OverlayControls.collapsedSize.width, above.x + size.width),
+      "Collapsed toolbar keeps the same right edge")
+
 let _ = NSApplication.shared
 let controls = OverlayControls()
+check(!controls.panel.hasShadow && controls.panel.level.rawValue > NSWindow.Level.floating.rawValue,
+      "Transparent controls float above the lyric panel without a detached shadow")
+check(controls.panel.contentView!.layer!.backgroundColor!.alpha == 0 &&
+      controls.panel.contentView!.layer!.borderWidth == 0,
+      "Controls have no detached pill background or outline")
 let handle = controls.panel.contentView!.subviews.first!
 check(handle.isAccessibilityElement() && handle.accessibilityRole() == .button,
       "Drag handle is exposed as an accessible control")
@@ -160,8 +179,8 @@ controls.setCollapsed(false)
 check(near(controls.panel.frame.width, 166), "Restored toolbar width")
 controls.follow(overlay: NSRect(x: 100, y: 100, width: 760, height: 112),
                 visibleFrames: [screen])
-check(near(controls.panel.frame.origin.x, 694) && near(controls.panel.frame.origin.y, 220),
-      "Interactive toolbar follows the lyric panel")
+check(near(controls.panel.frame.origin.x, 684) && near(controls.panel.frame.origin.y, 168),
+      "Interactive toolbar follows the lyric panel on its inside")
 
 controls.setLocked(false)
 var overlayForDrag = NSRect(x: 100, y: 100, width: 760, height: 112)

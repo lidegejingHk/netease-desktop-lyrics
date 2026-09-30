@@ -25,20 +25,17 @@ final class OverlayControls: NSObject {
         panel = NSPanel(contentRect: NSRect(origin: .zero, size: Self.expandedSize),
                         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init()
-        panel.level = .floating
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.hidesOnDeactivate = false
         panel.ignoresMouseEvents = false
 
         background.frame = NSRect(origin: .zero, size: Self.expandedSize)
         background.wantsLayer = true
-        background.layer?.backgroundColor = NSColor(calibratedWhite: 0.12, alpha: 0.94).cgColor
-        background.layer?.borderWidth = 1
-        background.layer?.borderColor = NSColor.white.withAlphaComponent(0.17).cgColor
-        background.layer?.cornerRadius = 12
+        background.layer?.backgroundColor = NSColor.clear.cgColor
         panel.contentView = background
 
         dragHandle.onDrag = { [weak self] delta in self?.onDrag?(delta) }
@@ -52,6 +49,14 @@ final class OverlayControls: NSObject {
         collapseButton.frame = NSRect(x: 124, y: 3, width: 34, height: 32)
         expandButton.frame = NSRect(x: 2, y: 3, width: 34, height: 32)
         expandButton.isHidden = true
+    }
+
+    func applyStyle(_ style: OverlayStyle) {
+        let tint = OverlayStyle.nsColor(style.textRGB) ?? .white
+        dragHandle.tintColor = tint
+        for button in [lockButton, settingsButton, collapseButton, expandButton] {
+            button.contentTintColor = tint.withAlphaComponent(0.94)
+        }
     }
 
     private func makeButton(_ button: NSButton, symbol: String, fallback: String,
@@ -120,8 +125,11 @@ final class OverlayControls: NSObject {
 
 private final class OverlayDragHandle: NSView {
     var onDrag: ((NSPoint) -> Void)?
+    var tintColor: NSColor = .white {
+        didSet { updateTint() }
+    }
     var isLocked = false {
-        didSet { glyph.textColor = .white.withAlphaComponent(isLocked ? 0.32 : 0.92) }
+        didSet { updateTint() }
     }
     private let glyph = NSTextField(labelWithString: "✥")
 
@@ -130,7 +138,7 @@ private final class OverlayDragHandle: NSView {
         glyph.frame = bounds
         glyph.alignment = .center
         glyph.font = .systemFont(ofSize: 22, weight: .regular)
-        glyph.textColor = .white.withAlphaComponent(0.92)
+        updateTint()
         addSubview(glyph)
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
@@ -139,6 +147,10 @@ private final class OverlayDragHandle: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
+
+    private func updateTint() {
+        glyph.textColor = tintColor.withAlphaComponent(isLocked ? 0.42 : 0.94)
+    }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard !isHidden, bounds.contains(convert(point, from: superview)) else { return nil }
