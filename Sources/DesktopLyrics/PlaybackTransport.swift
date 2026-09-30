@@ -25,6 +25,14 @@ enum PlaybackTransport {
         let role: String
         let title: String
         let enabled: Bool
+        let pressable: Bool
+
+        init(role: String, title: String, enabled: Bool, pressable: Bool = true) {
+            self.role = role
+            self.title = title
+            self.enabled = enabled
+            self.pressable = pressable
+        }
     }
 
     struct Availability {
@@ -47,7 +55,7 @@ enum PlaybackTransport {
     static func uniqueIndex(for action: Action, in items: [Item]) -> Int? {
         let matches = items.indices.filter { action.titles.contains(items[$0].title) }
         guard matches.count == 1, items[matches[0]].role == "AXMenuItem",
-              items[matches[0]].enabled else { return nil }
+              items[matches[0]].enabled, items[matches[0]].pressable else { return nil }
         return matches[0]
     }
 
@@ -63,11 +71,7 @@ enum PlaybackTransport {
 
     static func currentAvailability() -> Availability {
         guard let menu = readMenu() else { return .unavailable }
-        let actionable = menu.map { entry in
-            Item(role: entry.item.role, title: entry.item.title,
-                 enabled: entry.item.enabled && supportsPress(entry.element))
-        }
-        return availability(actionable)
+        return availability(menu.map(\.item))
     }
 
     /// Freshly resolve both the current menu and the intended action before pressing.
@@ -75,10 +79,9 @@ enum PlaybackTransport {
     static func perform(_ action: Action) -> Bool {
         guard let menu = readMenu(),
               let index = uniqueIndex(for: action, in: menu.map(\.item)),
-              (action != .play && action != .pause) ||
-                  availability(menu.map(\.item)).toggle == (action == .play ? .play : .pause)
-        else { return false }
+              availability(menu.map(\.item)).allows(action) else { return false }
         let element = menu[index].element
+        // AX menu state can change after the snapshot; fail closed on a stale element.
         guard supportsPress(element) else { return false }
         return AXUIElementPerformAction(element, kAXPressAction as CFString) == .success
     }
@@ -115,7 +118,8 @@ enum PlaybackTransport {
         return menuItems.map { element in
             Entry(item: Item(role: role(element) ?? "",
                              title: title(element) ?? "",
-                             enabled: bool(element, kAXEnabledAttribute as CFString)),
+                             enabled: bool(element, kAXEnabledAttribute as CFString),
+                             pressable: supportsPress(element)),
                   element: element)
         }
     }

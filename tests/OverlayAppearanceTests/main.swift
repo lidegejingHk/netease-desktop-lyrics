@@ -53,6 +53,14 @@ check(PlaybackTransport.availability([
     .init(role: "AXMenuItem", title: "播放", enabled: true),
     .init(role: "AXMenuItem", title: "暂停", enabled: true)
 ]).toggle == .unavailable, "Conflicting play/pause menu actions disable the toggle")
+let partiallyPressable = [
+    PlaybackTransport.Item(role: "AXMenuItem", title: "播放", enabled: true, pressable: true),
+    PlaybackTransport.Item(role: "AXMenuItem", title: "暂停", enabled: true, pressable: false)
+]
+check(PlaybackTransport.availability(partiallyPressable).toggle == .play &&
+      PlaybackTransport.uniqueIndex(for: .play, in: partiallyPressable) == 0 &&
+      PlaybackTransport.uniqueIndex(for: .pause, in: partiallyPressable) == nil,
+      "Menu availability and execution agree when only one item offers AXPress")
 check(PlaybackTransport.availability([
     .init(role: "AXMenuItem", title: "播放歌曲", enabled: true)
 ]).toggle == .unavailable, "Partial menu titles never enable transport")
