@@ -137,125 +137,75 @@ check(store.load().chipOpacity == baseline.chipOpacity, "Infinity fallback")
 defaults.set(true, forKey: "overlayStyle.backgroundOpacity")
 check(store.load().backgroundOpacity == baseline.backgroundOpacity, "Boolean opacity fallback")
 
-let twoRowOverlay = NSRect(x: 100, y: 100, width: 860, height: 176)
-let twoRowOrigin = ToolbarPlacement.origin(overlay: twoRowOverlay,
-                                           size: OverlayControls.expandedSize,
-                                           visibleFrames: [NSRect(x: 0, y: 0, width: 1000, height: 600)])
-check(near(OverlayControls.expandedSize.height, 80), "Two rows have a reserved 80-point height")
-check(near(twoRowOrigin.x, 784) && near(twoRowOrigin.y, 148),
-      "The controls move down and stay in the right rail")
-let twoRowCollapsed = ToolbarPlacement.origin(overlay: twoRowOverlay,
-                                              size: OverlayControls.collapsedSize,
-                                              visibleFrames: [NSRect(x: 0, y: 0, width: 1000, height: 600)])
-check(near(twoRowCollapsed.y, twoRowOrigin.y) &&
-      near(twoRowCollapsed.x + OverlayControls.collapsedSize.width,
-           twoRowOrigin.x + OverlayControls.expandedSize.width),
-      "Collapse keeps the lower row and right edge anchored")
+// The three annotations are positions inside one continuous background, not three cards.
+let lyricRect = NSRect(x: 116, y: 144, width: 848, height: 126)
 let screen = NSRect(x: 0, y: 0, width: 1000, height: 600)
-let size = OverlayControls.expandedSize
-let above = ToolbarPlacement.origin(
-    overlay: NSRect(x: 100, y: 100, width: 860, height: 176),
-    size: size,
-    visibleFrames: [screen]
-)
-check(near(above.x, 784) && near(above.y, 148), "Toolbar in the right rail, below the top edge")
-let below = ToolbarPlacement.origin(
-    overlay: NSRect(x: 700, y: 490, width: 860, height: 176),
-    size: size,
-    visibleFrames: [screen]
-)
-check(near(below.x, 826) && near(below.y, 514),
-      "Toolbar stays inside the visible part of a lyric window at the screen edge")
+let outerRect = OverlayLayout.outerFrame(for: lyricRect)
+let toolbarRect = OverlayLayout.toolbarFrame(for: lyricRect)
+let collapsedRect = OverlayLayout.toolbarFrame(for: lyricRect, collapsed: true)
+let railRect = OverlayLayout.railFrame(for: lyricRect)
+let envelope = OverlayLayout.envelope(for: lyricRect)
+check(OverlayLayout.lyricSize == lyricRect.size &&
+      outerRect == NSRect(x: 100, y: 100, width: 880, height: 236),
+      "One 880×236 background encloses the lyric region")
+check(toolbarRect == NSRect(x: 668, y: 278, width: 294, height: 44) &&
+      near(toolbarRect.minY - lyricRect.maxY, 8) && outerRect.contains(toolbarRect),
+      "Right-aligned controls stay inside the enclosing frame, above the lyrics")
+check(near(collapsedRect.maxX, toolbarRect.maxX) &&
+      near(collapsedRect.maxY, toolbarRect.maxY),
+      "Collapsing keeps the upper-right anchor")
+check(railRect == NSRect(x: 124, y: 110, width: 832, height: 28) &&
+      near(lyricRect.minY - railRect.maxY, 6) && outerRect.contains(railRect),
+      "The compact full-width waveform sits 6 pt beneath the lyrics")
+check(outerRect.contains(lyricRect) && envelope == outerRect &&
+      !toolbarRect.intersects(lyricRect) && !railRect.intersects(lyricRect) &&
+      !toolbarRect.intersects(railRect),
+      "Content regions fit within one background without overlapping")
+check(ToolbarPlacement.origin(overlay: lyricRect,
+                              size: OverlayControls.expandedSize) == toolbarRect.origin,
+      "Toolbar placement uses the enclosing frame's top-right inset")
 let secondScreen = NSRect(x: 1000, y: -200, width: 1200, height: 700)
-let moved = ToolbarPlacement.origin(
-    overlay: NSRect(x: 1300, y: 100, width: 860, height: 176),
-    size: size,
-    visibleFrames: [screen, secondScreen]
-)
-check(near(moved.x, 1984) && near(moved.y, 148), "Toolbar anchors within the active display")
-let safelyKept = OverlayVisibility.origin(
-    for: NSRect(x: 1200, y: 100, width: 860, height: 176), visibleFrames: [screen, secondScreen]
-)
-check(near(safelyKept.x, 1200) && near(safelyKept.y, 100), "Keep visible lyric window")
+check(OverlayVisibility.origin(for: envelope, visibleFrames: [screen]) == envelope.origin,
+      "Keep the complete framed group on screen without jumping")
 let rescued = OverlayVisibility.origin(
-    for: NSRect(x: 1300, y: 1200, width: 860, height: 176), visibleFrames: [screen]
-)
-check(near(rescued.x, 140) && near(rescued.y, 424), "Recover lyric window from disconnected display")
-let mostlyStranded = OverlayVisibility.origin(
-    for: NSRect(x: 960, y: 300, width: 860, height: 176), visibleFrames: [screen]
-)
-check(near(mostlyStranded.x, 140) && near(mostlyStranded.y, 300),
-      "Recover lyric window even when a narrow sliver remains")
-
-let isolated = ToolbarPlacement.origin(
-    overlay: NSRect(x: 2400, y: 200, width: 860, height: 176),
-    size: size,
-    visibleFrames: [screen, secondScreen]
-)
-check(isolated.x >= secondScreen.minX && isolated.x + size.width <= secondScreen.maxX,
-      "Fallback position remains on a visible display")
-
-let noDisplay = ToolbarPlacement.origin(
-    overlay: NSRect(x: 100, y: 100, width: 860, height: 176),
-    size: size, visibleFrames: []
-)
-check(near(noDisplay.x, 784) && near(noDisplay.y, 148),
-      "Display-less fallback remains inside the lyric frame")
-let collapsedPoint = ToolbarPlacement.origin(
-    overlay: NSRect(x: 100, y: 100, width: 860, height: 176),
-    size: OverlayControls.collapsedSize, visibleFrames: [screen]
-)
-check(near(collapsedPoint.x + OverlayControls.collapsedSize.width, above.x + size.width),
-      "Collapsed toolbar keeps the same right edge")
-let thinSliver = NSRect(x: -800, y: 100, width: 860, height: 176)
-let thinExpanded = ToolbarPlacement.origin(overlay: thinSliver, size: size, visibleFrames: [screen])
-let thinCollapsed = ToolbarPlacement.origin(overlay: thinSliver,
-                                             size: OverlayControls.collapsedSize,
-                                             visibleFrames: [screen])
-check(near(thinExpanded.x + size.width,
-           thinCollapsed.x + OverlayControls.collapsedSize.width),
-      "Collapsed controls preserve the same right edge even if lyrics have only a thin visible sliver")
-check(thinCollapsed.x >= screen.minX &&
-      thinCollapsed.x + OverlayControls.collapsedSize.width <= thinSliver.maxX,
-      "Collapsed control remains inside the visible lyric sliver")
-let thinCollapseButton = NSRect(x: thinExpanded.x + 124, y: thinExpanded.y + 3,
-                                width: 34, height: 32)
-check(thinCollapseButton.minX >= screen.minX && thinCollapseButton.maxX <= thinSliver.maxX,
-      "Expanded toolbar keeps its collapse button accessible inside the lyric sliver")
-let tinySliver = NSRect(x: -840, y: 100, width: 860, height: 176)
-let tinyCollapsed = ToolbarPlacement.origin(overlay: tinySliver,
-                                             size: OverlayControls.collapsedSize,
-                                             visibleFrames: [screen])
-check(tinyCollapsed.x + OverlayControls.collapsedSize.width <= tinySliver.maxX &&
-      tinyCollapsed.x + 2 + 34 > screen.minX,
-      "When less than a button fits, the visible part still stays inside the lyric sliver")
-let edgeScreens = [screen, secondScreen]
-let edgeOverlay = NSRect(x: 950, y: 100, width: 860, height: 176)
-let edgeExpanded = ToolbarPlacement.origin(overlay: edgeOverlay, size: size,
-                                            visibleFrames: edgeScreens)
-let edgeCollapsed = ToolbarPlacement.origin(overlay: edgeOverlay,
-                                             size: OverlayControls.collapsedSize,
-                                             visibleFrames: edgeScreens)
-check(near(edgeExpanded.x + size.width,
-           edgeCollapsed.x + OverlayControls.collapsedSize.width),
-      "Collapsed controls preserve the right edge when lyrics straddle displays")
+    for: envelope.offsetBy(dx: 1200, dy: 700), visibleFrames: [screen])
+check(near(rescued.x, 120) && near(rescued.y, 364),
+      "A disconnected screen recovers the whole enclosing frame")
+let clippedLyric = lyricRect.offsetBy(dx: -140, dy: -140)
+let corrected = OverlayLayout.constrainedOrigin(for: clippedLyric, visibleFrames: [screen])
+check(near(corrected.x, 16) && near(corrected.y, 44),
+      "Dragging clips the outer frame before losing its toolbar or lower waveform")
+let topEdge = OverlayVisibility.origin(
+    for: envelope.offsetBy(dx: 80, dy: 450), visibleFrames: [screen])
+check(near(topEdge.y, 364), "Screen top reserves room for the framed toolbar")
+let secondEnvelope = envelope.offsetBy(dx: 1100, dy: -20)
+check(OverlayVisibility.origin(for: secondEnvelope,
+                               visibleFrames: [screen, secondScreen]) == secondEnvelope.origin,
+      "A framed group on another display retains its placement")
 
 let _ = NSApplication.shared
 let controls = OverlayControls()
 check(!controls.panel.hasShadow &&
       controls.controlPanels.allSatisfy { $0.level.rawValue > NSWindow.Level.floating.rawValue },
       "Individual transparent controls float above the lyrics without detached shadows")
-check(controls.panel.ignoresMouseEvents && !controls.panel.isVisible,
-      "Full-size toolbar layout frame cannot intercept mouse events")
+check(controls.panel.ignoresMouseEvents && !controls.panel.isVisible &&
+      controls.panel.contentView?.layer?.backgroundColor?.alpha == 0 &&
+      controls.panel.contentView?.layer?.borderWidth == 0,
+      "Upper toolbar is just an invisible click-through layout surface")
 check(controls.controlPanels.count == 8 &&
       controls.controlPanels.allSatisfy {
           !$0.hasShadow && !$0.isOpaque && !$0.hidesOnDeactivate &&
           $0.collectionBehavior.contains(.canJoinAllSpaces) && $0.animationBehavior == .none
       },
       "Only individual 34-point control windows can receive clicks")
-controls.follow(overlay: twoRowOverlay, visibleFrames: [screen])
-check(controls.controlPanels[5].frame.midY > controls.controlPanels[0].frame.midY,
-      "Playback controls sit above the lower row of management actions")
+controls.follow(overlay: lyricRect)
+check((controls.controlPanels.enumerated().filter { $0.offset != 4 }.allSatisfy {
+          near($0.element.frame.midY, controls.panel.frame.midY) &&
+          controls.panel.frame.contains($0.element.frame)
+      }), "Seven controls fit in one row above the lyric frame")
+check(controls.controlPanels[5].frame.minX < controls.controlPanels[0].frame.minX &&
+      controls.controlPanels[7].frame.maxX < controls.controlPanels[1].frame.minX,
+      "Playback icons precede placement and appearance icons")
 check(controls.controlPanels[5].contentView!.accessibilityLabel() == "上一首" &&
       controls.controlPanels[7].contentView!.accessibilityLabel() == "下一首",
       "Transport controls have accessible names")
@@ -273,8 +223,9 @@ let styledToolbar = OverlayStyle(backgroundRGB: "#112233", textRGB: "#20CF80", c
                                  backgroundOpacity: 0.3, chipOpacity: 0.5)
 controls.applyStyle(styledToolbar)
 let handleGlyph = handle.subviews.first as! NSTextField
-check(OverlayStyle.rgbHex(handleGlyph.textColor!) == "#20CF80",
-      "Drag handle tint follows the lyric text color")
+check(OverlayStyle.rgbHex(handleGlyph.textColor!) == "#20CF80" &&
+      near(controls.panel.contentView!.layer!.backgroundColor!.alpha, 0),
+      "Toolbar icons follow user tint without painting a separate backdrop")
 check(controls.controlPanels.compactMap { $0.contentView as? NSButton }
     .allSatisfy { OverlayStyle.rgbHex($0.contentTintColor!) == "#20CF80" },
       "All toolbar icons follow the lyric text color")
@@ -333,26 +284,27 @@ handle.mouseDown(with: mouseDown)
 handle.mouseDragged(with: movementEvent(x: 35, y: 22, deltaX: 25, deltaY: -12))
 check(near(dragDelta.x, 0) && near(dragDelta.y, 0), "Locked drag handle never moves lyrics")
 controls.setCollapsed(true)
-check(near(controls.panel.frame.width, 38), "Collapsed toolbar width")
-controls.follow(overlay: NSRect(x: 100, y: 100, width: 860, height: 176),
-                visibleFrames: [screen])
-check(near(controls.panel.frame.maxX, 950) && near(controls.panel.frame.minY, 148),
-      "Collapsed button stays in the inside lower-right rail")
+check(near(controls.panel.frame.width, 42) && near(controls.panel.frame.height, 44) &&
+      controls.panel.contentView!.frame.size == OverlayControls.collapsedSize,
+      "Collapsed toolbar geometry shrinks above the lyrics")
+controls.follow(overlay: lyricRect)
+check(near(controls.panel.frame.maxX, toolbarRect.maxX) &&
+      near(controls.panel.frame.maxY, toolbarRect.maxY),
+      "Collapsed button keeps the upper-right edge")
 toolbarButtons.first(where: { $0.accessibilityLabel() == "展开歌词工具条" })!.performClick(nil)
 check(tappedCollapse == 2, "Collapsed toolbar exposes an expand action")
 controls.setCollapsed(false)
-check(near(controls.panel.frame.width, 166) && near(controls.panel.frame.height, 80), "Restored toolbar width")
-controls.follow(overlay: NSRect(x: 100, y: 100, width: 860, height: 176),
-                visibleFrames: [screen])
-check(near(controls.panel.frame.origin.x, 784) && near(controls.panel.frame.origin.y, 148),
-      "Interactive toolbar follows the lyric panel on its inside")
+check(controls.panel.frame.size == OverlayLayout.toolbarSize, "Restored toolbar geometry")
+controls.follow(overlay: lyricRect)
+check(controls.panel.frame == toolbarRect && !controls.panel.frame.intersects(lyricRect),
+      "Interactive toolbar follows the lyric panel from outside")
 controls.setVisible(true)
 let activeWindows = controls.controlPanels.filter(\.isVisible)
 check(activeWindows.count == 7 && activeWindows.allSatisfy { $0.frame.width == 34 },
       "Expanded toolbar exposes seven small hit windows rather than one large one")
 check(activeWindows.allSatisfy { !$0.ignoresMouseEvents || $0 === controls.controlPanels[0] },
       "Icon panels remain interactive")
-let gap = NSPoint(x: controls.panel.frame.minX + 43, y: controls.panel.frame.minY + 20)
+let gap = NSPoint(x: controls.panel.frame.minX + 43, y: controls.panel.frame.minY + 24)
 check(controls.panel.frame.contains(gap) &&
       !activeWindows.contains(where: { $0.frame.contains(gap) }),
       "Transparent space between icons contains no mouse-intercepting window")
@@ -360,30 +312,32 @@ controls.setCollapsed(true)
 check(controls.controlPanels.filter(\.isVisible).count == 1 &&
       controls.controlPanels[4].isVisible,
       "Collapsed toolbar leaves only one small hit window")
-check(near(controls.controlPanels[4].frame.maxX, controls.panel.frame.maxX - 2),
+check(near(controls.controlPanels[4].frame.maxX, controls.panel.frame.maxX - 7),
       "The collapsed hit window stays on the same right edge")
-check(near(controls.controlPanels[4].frame.minY, controls.panel.frame.minY + 3),
-      "The collapsed hit window stays in the lower row")
+check(near(controls.controlPanels[4].frame.minY, controls.panel.frame.minY + 6),
+      "The collapsed hit window stays vertically centered")
 controls.setVisible(false)
-check(controls.controlPanels.allSatisfy { !$0.isVisible },
-      "Hiding lyrics also removes all toolbar hit targets")
+check(controls.controlPanels.allSatisfy { !$0.isVisible } && !controls.panel.isVisible,
+      "Hiding lyrics removes the toolbar background and hit targets")
 
 // Exercise the window server's real mouse target selection, not just view hitTest.
 // Window ordering and ignoresMouseEvents cross a process boundary, so wait for
 // WindowServer's state rather than assuming the next instruction sees the change.
 let liveScreen = NSScreen.main!.visibleFrame
-let liveOverlay = NSRect(x: liveScreen.midX - 430, y: liveScreen.midY - 88,
-                         width: 860, height: 176)
+let liveOverlay = NSRect(x: liveScreen.midX - OverlayLayout.lyricSize.width / 2,
+                         y: liveScreen.midY - OverlayLayout.lyricSize.height / 2,
+                         width: OverlayLayout.lyricSize.width,
+                         height: OverlayLayout.lyricSize.height)
 let lyricPanel = NSPanel(contentRect: liveOverlay, styleMask: [.borderless, .nonactivatingPanel],
                          backing: .buffered, defer: false)
 lyricPanel.level = .floating
 lyricPanel.orderFrontRegardless()
-controls.follow(overlay: liveOverlay, visibleFrames: [liveScreen])
+controls.follow(overlay: liveOverlay)
 controls.setCollapsed(false)
 controls.setLocked(false)
 controls.setVisible(true)
 let clickGap = NSPoint(x: controls.panel.frame.minX + 43,
-                       y: controls.panel.frame.minY + 19)
+                       y: controls.panel.frame.minY + 24)
 func mouseTarget(_ point: NSPoint) -> Int {
     NSWindow.windowNumber(at: point, belowWindowWithWindowNumber: 0)
 }
@@ -404,8 +358,10 @@ let dragCenter = NSPoint(x: controls.controlPanels[0].frame.midX,
                          y: controls.controlPanels[0].frame.midY)
 let lockCenter = NSPoint(x: controls.controlPanels[1].frame.midX,
                          y: controls.controlPanels[1].frame.midY)
-awaitMouseState("All seven buttons receive clicks; the gap reaches unlocked lyrics") {
-    expandedButtonsReceiveClicks() && mouseTarget(clickGap) == lyricPanel.windowNumber
+awaitMouseState("All seven buttons receive clicks; toolbar gap is click-through") {
+    expandedButtonsReceiveClicks() &&
+    mouseTarget(clickGap) != controls.panel.windowNumber &&
+    !controls.controlPanels.contains(where: { $0.windowNumber == mouseTarget(clickGap) })
 }
 // Run a native down/up sequence through the small panel, not NSButton.performClick.
 // Posting the up event first lets NSButton's tracking loop consume it after down.
@@ -433,24 +389,25 @@ check(tappedLock == countsBeforeEvents.0 + 1 &&
       tappedCollapse == countsBeforeEvents.2 + 1,
       "Native button-window mouse events dispatch lock, style, and collapse actions")
 controls.setVisible(false)
-awaitMouseState("Hidden controls leave no mouse targets over the lyrics") {
-    mouseTarget(dragCenter) == lyricPanel.windowNumber &&
-    mouseTarget(lockCenter) == lyricPanel.windowNumber
+awaitMouseState("Hidden controls leave no mouse targets over the desktop") {
+    mouseTarget(dragCenter) != controls.controlPanels[0].windowNumber &&
+    mouseTarget(lockCenter) != controls.controlPanels[1].windowNumber &&
+    mouseTarget(dragCenter) != controls.panel.windowNumber
 }
 controls.setVisible(true)
 awaitMouseState("Buttons work immediately after showing the toolbar again") {
-    expandedButtonsReceiveClicks() && mouseTarget(clickGap) == lyricPanel.windowNumber
+    expandedButtonsReceiveClicks() && mouseTarget(clickGap) != controls.panel.windowNumber
 }
 controls.setCollapsed(true)
 let expandPanel = controls.controlPanels[4]
 let expandCenter = NSPoint(x: expandPanel.frame.midX, y: expandPanel.frame.midY)
 awaitMouseState("Collapsed toolbar retains its clickable expand button") {
     mouseTarget(expandCenter) == expandPanel.windowNumber &&
-    mouseTarget(dragCenter) == lyricPanel.windowNumber
+    mouseTarget(dragCenter) != controls.controlPanels[0].windowNumber
 }
 controls.setCollapsed(false)
 awaitMouseState("All seven controls can receive clicks after expanding again") {
-    expandedButtonsReceiveClicks() && mouseTarget(clickGap) == lyricPanel.windowNumber
+    expandedButtonsReceiveClicks() && mouseTarget(clickGap) != controls.panel.windowNumber
 }
 controls.setLocked(true)
 lyricPanel.ignoresMouseEvents = true
@@ -458,17 +415,17 @@ awaitMouseState("Locked lyrics and drag handle pass clicks through, but lock sta
     mouseTarget(lockCenter) == controls.controlPanels[1].windowNumber &&
     mouseTarget(dragCenter) != controls.controlPanels[0].windowNumber &&
     mouseTarget(dragCenter) != lyricPanel.windowNumber &&
-    mouseTarget(clickGap) != lyricPanel.windowNumber
+    mouseTarget(clickGap) != controls.panel.windowNumber
 }
 controls.setVisible(false)
 lyricPanel.orderOut(nil)
 
 controls.setLocked(false)
-var overlayForDrag = NSRect(x: 100, y: 100, width: 860, height: 176)
+var overlayForDrag = lyricRect
 controls.onDrag = { delta in
     overlayForDrag.origin.x += delta.x
     overlayForDrag.origin.y += delta.y
-    controls.follow(overlay: overlayForDrag, visibleFrames: [screen])
+    controls.follow(overlay: overlayForDrag)
 }
 // Construct both events before the first callback moves the toolbar: queued events must not double-count it.
 let queuedA = movementEvent(x: 140, y: 290, deltaX: 20, deltaY: -15)
@@ -476,130 +433,255 @@ let queuedB = movementEvent(x: 155, y: 300, deltaX: 15, deltaY: 10)
 handle.mouseDown(with: mouseDown)
 handle.mouseDragged(with: queuedA)
 handle.mouseDragged(with: queuedB)
-check(near(overlayForDrag.minX, 135) && near(overlayForDrag.minY, 105),
+check(near(overlayForDrag.minX, 151) && near(overlayForDrag.minY, 149),
       "Queued drag events move by their independent deltas, not moving-window coordinates")
 
-let lyricView = LyricsView(frame: NSRect(x: 0, y: 0, width: 860, height: 176))
-lyricView.applyStyle(OverlayStyle(backgroundRGB: "#123456", textRGB: "#F0E0D0", chipRGB: "#112233",
-                                  backgroundOpacity: 0.15, chipOpacity: 0.55))
-lyricView.show(primary: "合成歌词", secondary: "合成副句", fraction: 0.5, active: true)
+let outer = OverlayFrame()
+outer.follow(lyrics: lyricRect)
+check(outer.panel.frame == outerRect && !outer.panel.ignoresMouseEvents &&
+      outer.panel.contentView!.layer!.cornerRadius == 21,
+      "The unified outer frame accepts pointer input when unlocked")
+let lyricView = LyricsView(frame: NSRect(origin: .zero, size: OverlayLayout.lyricSize))
+let customStyle = OverlayStyle(backgroundRGB: "#123456", textRGB: "#F0E0D0",
+                               chipRGB: "#112233", backgroundOpacity: 0.15, chipOpacity: 0.55)
+lyricView.applyStyle(customStyle)
+outer.applyStyle(customStyle)
+check(near(outer.panel.contentView!.layer!.backgroundColor!.alpha, 0.15),
+      "The only full-frame background uses the user-selected opacity exactly")
+let dragLyricPanel = NSPanel(contentRect: lyricRect,
+                             styleMask: [.borderless, .nonactivatingPanel],
+                             backing: .buffered, defer: false)
+var backgroundDragCount = 0
+outer.onDrag = { delta in
+    backgroundDragCount += 1
+    let proposed = dragLyricPanel.frame.offsetBy(dx: delta.x, dy: delta.y)
+    dragLyricPanel.setFrameOrigin(OverlayLayout.constrainedOrigin(
+        for: proposed, visibleFrames: [screen]))
+    outer.follow(lyrics: dragLyricPanel.frame)
+    controls.follow(overlay: dragLyricPanel.frame)
+}
+let backgroundDown = NSEvent.mouseEvent(with: .leftMouseDown,
+    location: NSPoint(x: 90, y: 215), modifierFlags: [], timestamp: 0,
+    windowNumber: outer.panel.windowNumber, context: nil, eventNumber: 0,
+    clickCount: 1, pressure: 1)!
+// Route a real AppKit mouse sequence through NSPanel before testing deltas
+// directly. A hit-test alone cannot prove the background actually tracks drags.
+let nativeDrag = NSEvent.mouseEvent(with: .leftMouseDragged,
+    location: NSPoint(x: 100, y: 215), modifierFlags: [], timestamp: 0.01,
+    windowNumber: outer.panel.windowNumber, context: nil, eventNumber: 1,
+    clickCount: 1, pressure: 1)!
+outer.setVisible(true)
+outer.panel.sendEvent(backgroundDown)
+outer.panel.sendEvent(nativeDrag)
+check(backgroundDragCount == 1, "AppKit routes native drags to the gray background")
+backgroundDragCount = 0
+outer.panel.contentView!.mouseDragged(with: movementEvent(
+    x: 190, y: 215, deltaX: 20, deltaY: -10))
+check(backgroundDragCount == 1 &&
+      near(dragLyricPanel.frame.minX, lyricRect.minX + 20) &&
+      near(dragLyricPanel.frame.minY, lyricRect.minY + 10) &&
+      outer.panel.frame == OverlayLayout.outerFrame(for: dragLyricPanel.frame) &&
+      controls.panel.frame == OverlayLayout.toolbarFrame(for: dragLyricPanel.frame),
+      "Dragging blank background moves the lyric, unified frame and toolbar together")
+outer.panel.contentView!.mouseDragged(with: movementEvent(
+    x: 240, y: 215, deltaX: 0, deltaY: -900))
+check(backgroundDragCount == 2 &&
+      near(dragLyricPanel.frame.minX, 136) &&
+      near(dragLyricPanel.frame.minY, 408) &&
+      outer.panel.frame == OverlayLayout.outerFrame(for: dragLyricPanel.frame),
+      "Blank-background drag keeps the complete group within visible bounds")
+outer.follow(lyrics: lyricRect)
+controls.follow(overlay: lyricRect)
+lyricView.show(primary: "合成歌词", secondary: "合成副句")
 lyricView.layout()
-check(near(lyricView.layer!.backgroundColor!.alpha, 0.15), "Live background alpha")
-check(!lyricView.subviews[0].isHidden && !lyricView.subviews[1].isHidden,
-      "Text-sized chip views appear for both lines")
+check(near(lyricView.layer!.backgroundColor!.alpha, 0) &&
+      lyricView.layer!.borderWidth == 0, "Lyric area draws no second card")
+check(lyricView.subviews.count == 4 &&
+      !lyricView.subviews[0].isHidden && !lyricView.subviews[1].isHidden,
+      "Only the lyric lines and text-sized backings remain in the center region")
 check(near(lyricView.subviews[0].layer!.backgroundColor!.alpha, 0.55), "Live chip alpha")
-lyricView.applyStyle(.defaultValue)
-lyricView.layout()
-check(lyricView.subviews[0].isHidden && lyricView.subviews[1].isHidden,
-      "Default text background is fully transparent")
-
 let primaryLabel = lyricView.subviews[2] as! NSTextField
 let detailLabel = lyricView.subviews[3] as! NSTextField
 let primaryChip = lyricView.subviews[0]
 let detailChip = lyricView.subviews[1]
-let expandedInside = NSRect(x: 584, y: 48, width: 166, height: 80)
-lyricView.setControlsFrame(expandedInside)
-lyricView.show(primary: "合成歌词", secondary: "合成副句", fraction: 0, active: true)
+check(near(primaryLabel.frame.midX, lyricView.bounds.midX) &&
+      near(detailLabel.frame.midX, lyricView.bounds.midX) &&
+      near(primaryChip.frame.midX, lyricView.bounds.midX) &&
+      near(detailChip.frame.midX, lyricView.bounds.midX),
+      "Both lyric lines and text backgrounds center on the complete window width")
+lyricView.applyStyle(.defaultValue)
 lyricView.layout()
-check(near(primaryLabel.frame.midX, lyricView.bounds.midX),
-      "Short primary lyrics remain centered with the rail open")
-check(near(detailLabel.frame.midX, lyricView.bounds.midX),
-      "Short next or translated lyrics remain centered independently")
-
-let mediumLine = String(repeating: "合成", count: 10)
-lyricView.applyStyle(OverlayStyle(backgroundRGB: "#123456", textRGB: "#F0E0D0", chipRGB: "#112233",
-                                  backgroundOpacity: 0.15, chipOpacity: 0.55))
-lyricView.show(primary: mediumLine, secondary: String(repeating: "合成", count: 19),
-               fraction: 0, active: true)
+check(primaryChip.isHidden && detailChip.isHidden,
+      "Default text background is transparent")
+lyricView.show(primary: "等待网易云音乐…", secondary: "")
 lyricView.layout()
-check(primaryLabel.frame.midX < lyricView.bounds.midX &&
-      detailLabel.frame.midX < lyricView.bounds.midX,
-      "Both lyric rows use their dedicated left-side area")
-check(primaryChip.frame.maxX <= expandedInside.minX - 20 &&
-      detailChip.frame.maxX <= expandedInside.minX - 20,
-      "Both text backgrounds leave clearance before the controls")
-check(primaryLabel.frame.maxX <= expandedInside.minX - 20 &&
-      detailLabel.frame.maxX <= expandedInside.minX - 20,
-      "Neither label can draw beneath the toolbar")
+check(near(primaryLabel.frame.midY, lyricView.bounds.midY) &&
+      detailLabel.isHidden && detailChip.isHidden,
+      "Single-line permission or waiting status is vertically centered without instructions")
 
-lyricView.show(primary: String(repeating: "很长的合成歌词", count: 12),
-               secondary: "", fraction: 0, active: true)
+lyricView.applyStyle(customStyle)
+lyricView.show(primary: String(repeating: "合成歌词", count: 19),
+               secondary: String(repeating: "合成副句", count: 16))
 lyricView.layout()
-check(primaryChip.frame.maxX <= expandedInside.minX - 20 &&
-      primaryChip.frame.width <= primaryLabel.frame.width,
-      "Long wrapped text and its background do not cover the toolbar")
-
-lyricView.show(primary: mediumLine, secondary: "", fraction: 0, active: true)
-lyricView.setControlsFrame(NSRect(x: 712, y: 48, width: 38, height: 38))
+check(primaryLabel.maximumNumberOfLines == 2 && detailLabel.maximumNumberOfLines == 2 &&
+      primaryLabel.stringValue.contains("\n") && detailLabel.stringValue.contains("\n"),
+      "Long primary and translated lines wrap independently into at most two rows")
+check(primaryLabel.font!.pointSize <= 24 && primaryLabel.font!.pointSize >= 16 &&
+      detailLabel.font!.pointSize <= 15 && detailLabel.font!.pointSize >= 12,
+      "Long text shrinks as needed without violating minimum font sizes")
+check(primaryLabel.frame.minX >= 24 && primaryLabel.frame.maxX <= lyricView.bounds.maxX - 24 &&
+      detailLabel.frame.minX >= 24 && detailLabel.frame.maxX <= lyricView.bounds.maxX - 24 &&
+      near(primaryLabel.frame.midX, lyricView.bounds.midX) &&
+      near(detailLabel.frame.midX, lyricView.bounds.midX),
+      "Two-line lyrics use the full centered band, not an internal control rail")
+check(primaryLabel.frame.minY > detailLabel.frame.maxY &&
+      primaryChip.frame.maxX <= lyricView.bounds.maxX - 24 &&
+      detailChip.frame.maxX <= lyricView.bounds.maxX - 24,
+      "Separate rows and their backgrounds never overlap or leave the lyric frame")
+lyricView.show(primary: String(repeating: "特别长的合成歌词", count: 200), secondary: "")
 lyricView.layout()
-check(near(primaryLabel.frame.midX, lyricView.bounds.midX),
-      "After collapsing the toolbar, an ordinary line returns to the center")
+check(near(primaryLabel.font!.pointSize, 16) &&
+      primaryLabel.stringValue.hasSuffix("…") &&
+      primaryLabel.stringValue.components(separatedBy: "\n").count == 2,
+      "Extreme lyrics use no more than two rows, minimum font size and an ellipsis")
+check(primaryLabel.accessibilityLabel() == String(repeating: "特别长的合成歌词", count: 200),
+      "Accessibility still exposes the entire original line")
+lyricView.show(primary: "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}" +
+               String(repeating: " 合成", count: 180), secondary: "")
+lyricView.layout()
+check(primaryLabel.stringValue.first == "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}" &&
+      primaryLabel.stringValue.hasSuffix("…"),
+      "Two-row truncation never splits a composed Unicode grapheme")
+lyricView.show(primary: String(repeating: "合成", count: 140),
+               secondary: String(repeating: "翻译", count: 140))
+lyricView.layout()
+check(detailLabel.stringValue.hasSuffix("…") &&
+      near(detailLabel.font!.pointSize, 12) &&
+      detailLabel.accessibilityLabel() == String(repeating: "翻译", count: 140),
+      "Extreme secondary text truncates independently and preserves accessibility text")
 
-let twoLineView = LyricsView(frame: NSRect(x: 0, y: 0, width: 860, height: 176))
-let rightRail = NSRect(x: 684, y: 48, width: 166, height: 80)
-twoLineView.setControlsFrame(rightRail)
-twoLineView.show(primary: String(repeating: "合成歌词", count: 16),
-                 secondary: String(repeating: "合成副句", count: 14), fraction: 0.3, active: true)
-twoLineView.layout()
-let twoLinePrimary = twoLineView.subviews[2] as! NSTextField
-let twoLineDetail = twoLineView.subviews[3] as! NSTextField
-check(twoLinePrimary.maximumNumberOfLines == 2 && twoLineDetail.maximumNumberOfLines == 2,
-      "Both lyric lines permit up to two visual rows")
-check(twoLinePrimary.stringValue.contains("\n") && twoLinePrimary.font!.pointSize < 24 &&
-      twoLinePrimary.font!.pointSize >= 16,
-      "A long primary line wraps before shrinking below 16 pt")
-check(twoLineDetail.stringValue.contains("\n") &&
-      twoLineDetail.font!.pointSize >= 12,
-      "The next/translated line also wraps in its own bounded area")
-check(twoLinePrimary.frame.maxX <= rightRail.minX - 20 &&
-      twoLineDetail.frame.maxX <= rightRail.minX - 20,
-      "Neither text line may enter the transport/control rail")
-check(twoLinePrimary.frame.minY > twoLineDetail.frame.maxY &&
-      twoLineDetail.frame.minY > 18,
-      "Two-line lyrics, next line, and progress each have their own vertical band")
-twoLineView.show(primary: String(repeating: "特别长的合成歌词", count: 200),
-                 secondary: "", fraction: 0.5, active: true)
-twoLineView.layout()
-check(near(twoLinePrimary.font!.pointSize, 16) &&
-      twoLinePrimary.stringValue.hasSuffix("…") &&
-      twoLinePrimary.stringValue.components(separatedBy: "\n").count == 2,
-      "Extreme lyrics are limited to two rows at minimum size and end with an ellipsis")
-check(twoLinePrimary.accessibilityLabel() == String(repeating: "特别长的合成歌词", count: 200),
-      "Accessibility retains full lyric content even when visually abbreviated")
-twoLineView.show(primary: "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}" + String(repeating: " 合成", count: 180),
-                 secondary: "", fraction: 0.4, active: true)
-twoLineView.layout()
-check(twoLinePrimary.stringValue.first == "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}" &&
-      twoLinePrimary.stringValue.hasSuffix("…"),
-      "Two-row truncation never cuts through a composed Unicode character")
-twoLineView.show(primary: String(repeating: "合成", count: 140),
-                 secondary: String(repeating: "翻译", count: 140), fraction: 0.5, active: true)
-twoLineView.layout()
-check(twoLineDetail.stringValue.hasSuffix("…") &&
-      near(twoLineDetail.font!.pointSize, 12) &&
-      twoLineDetail.accessibilityLabel() == String(repeating: "翻译", count: 140),
-      "Extreme secondary text also truncates at its own font minimum with complete accessibility text")
-let waveform = twoLineView.subviews.compactMap { $0 as? WaveformView }.first!
-twoLineView.show(primary: "合成", secondary: "", fraction: 0, active: true, playing: true)
-check(waveform.isAnimating, "Playback starts the ambient visual waveform")
-twoLineView.show(primary: "合成", secondary: "", fraction: 0, active: true, playing: false)
-check(!waveform.isAnimating && !waveform.isHidden, "Paused playback leaves static bars visible")
+// Lyric text, including its label, must use the same constrained drag path.
+// Native AppKit background movement would bypass the complete-frame boundary.
+let draggableLyrics = LyricsView(frame: NSRect(origin: .zero, size: lyricRect.size))
+draggableLyrics.show(primary: "拖动这句合成歌词", secondary: "")
+draggableLyrics.layout()
+dragLyricPanel.contentView = draggableLyrics
+dragLyricPanel.level = .floating
+dragLyricPanel.isMovableByWindowBackground = false
+var lyricDragCount = 0
+draggableLyrics.onDrag = { delta in
+    lyricDragCount += 1
+    let proposed = dragLyricPanel.frame.offsetBy(dx: delta.x, dy: delta.y)
+    dragLyricPanel.setFrameOrigin(OverlayLayout.constrainedOrigin(
+        for: proposed, visibleFrames: [screen]))
+    outer.follow(lyrics: dragLyricPanel.frame)
+    controls.follow(overlay: dragLyricPanel.frame)
+}
+dragLyricPanel.setFrameOrigin(lyricRect.origin)
+outer.follow(lyrics: lyricRect)
+controls.follow(overlay: lyricRect)
+dragLyricPanel.orderFrontRegardless()
+let label = draggableLyrics.subviews[2] as! NSTextField
+let labelCenter = NSPoint(x: label.frame.midX, y: label.frame.midY)
+check(draggableLyrics.hitTest(labelCenter) === draggableLyrics,
+      "Clicking visible lyric characters routes drag tracking to the lyric view")
+let lyricDown = NSEvent.mouseEvent(with: .leftMouseDown, location: labelCenter,
+    modifierFlags: [], timestamp: 0, windowNumber: dragLyricPanel.windowNumber,
+    context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+let lyricDrag = NSEvent.mouseEvent(with: .leftMouseDragged, location: labelCenter,
+    modifierFlags: [], timestamp: 0.01, windowNumber: dragLyricPanel.windowNumber,
+    context: nil, eventNumber: 1, clickCount: 1, pressure: 1)!
+dragLyricPanel.sendEvent(lyricDown)
+dragLyricPanel.sendEvent(lyricDrag)
+check(lyricDragCount == 1, "Native lyric-label drag reaches the constrained callback")
+lyricDragCount = 0
+draggableLyrics.mouseDragged(with: movementEvent(
+    x: 250, y: 250, deltaX: 0, deltaY: -900))
+check(lyricDragCount == 1 &&
+      near(dragLyricPanel.frame.minY, 408) &&
+      outer.panel.frame == OverlayLayout.outerFrame(for: dragLyricPanel.frame) &&
+      controls.panel.frame == OverlayLayout.toolbarFrame(for: dragLyricPanel.frame),
+      "Dragging lyric text cannot move any part of the group off-screen")
+dragLyricPanel.orderOut(nil)
+outer.follow(lyrics: lyricRect)
+controls.follow(overlay: lyricRect)
+
+let rail = WaveformRail()
+rail.follow(lyrics: lyricRect)
+check(rail.panel.frame == railRect && rail.panel.ignoresMouseEvents &&
+      rail.panel.collectionBehavior.contains(.canJoinAllSpaces),
+      "Full-width lower region follows lyrics and cannot intercept mouse input")
+rail.applyStyle(customStyle)
+check(near(rail.content.layer!.backgroundColor!.alpha, 0) &&
+      rail.content.layer!.borderWidth == 0,
+      "Waveform content draws no third card")
+rail.show(fraction: 0.5, active: true, playing: true)
+rail.content.layout()
+let waveform = rail.content.waveform
+check(waveform.isAnimating &&
+      waveform.layer!.sublayers!.count >= 80 &&
+      waveform.frame.width >= railRect.width - 24,
+      "A playing lyric animates a dense waveform along the entire lower region")
+check(near(rail.content.progressFraction, 0.5) &&
+      near(rail.content.progressWidth, rail.content.progressTrackWidth * 0.5),
+      "The lower visual indicator reflects current lyric progress")
+rail.show(fraction: 4, active: true, playing: false)
+rail.content.layout()
+check(!waveform.isAnimating && near(rail.content.progressFraction, 1) &&
+      !waveform.isHidden, "Paused playback freezes bars and clamps progress")
 waveform.reduceMotionProvider = { true }
-twoLineView.show(primary: "合成", secondary: "", fraction: 0, active: true, playing: true)
-check(!waveform.isAnimating, "The system's Reduced Motion preference disables the waveform timer")
+rail.show(fraction: -1, active: true, playing: true)
+check(!waveform.isAnimating && near(rail.content.progressFraction, 0),
+      "Reduced Motion freezes the waveform and progress remains bounded")
 waveform.reduceMotionProvider = { false }
 waveform.refreshMotionPreference()
-check(waveform.isAnimating, "The waveform resumes when Reduced Motion is disabled")
-twoLineView.setOverlayVisible(false)
-check(!waveform.isAnimating, "Hiding the lyrics stops the waveform timer")
-twoLineView.setOverlayVisible(true)
-check(waveform.isAnimating, "Showing playing lyrics restarts the waveform")
-twoLineView.show(primary: "等待", secondary: "", fraction: 0, active: false)
-check(!waveform.isAnimating && waveform.isHidden, "Unavailable playback hides and stops the waveform")
+check(waveform.isAnimating, "Waveform resumes after Reduced Motion is disabled")
+rail.setVisible(false)
+check(!waveform.isAnimating && !rail.panel.isVisible,
+      "Hiding the unified overlay stops animation and hides the lower window")
+rail.setVisible(true)
+check(waveform.isAnimating && rail.panel.isVisible,
+      "Showing the group restores the lower panel and playback animation")
+rail.show(fraction: 0.5, active: false, playing: false)
+rail.content.layout()
+check(!waveform.isAnimating && !waveform.isHidden && near(rail.content.progressWidth, 0),
+      "No song leaves a static ambient rail without a running timer or active progress")
 check(!WaveformMotion.shouldAnimate(playing: false, reduceMotion: false) &&
       !WaveformMotion.shouldAnimate(playing: true, reduceMotion: true) &&
       WaveformMotion.shouldAnimate(playing: true, reduceMotion: false),
-      "Waveform stops when paused or when Reduced Motion is enabled")
+      "Paused and Reduce Motion playback never animates")
+outer.follow(lyrics: liveOverlay)
+outer.setVisible(true)
+rail.follow(lyrics: liveOverlay)
+rail.setVisible(true)
+controls.follow(overlay: liveOverlay)
+controls.setLocked(false)
+controls.setVisible(true)
+let railCenter = NSPoint(x: rail.panel.frame.midX, y: rail.panel.frame.midY)
+let emptyBackground = NSPoint(x: outer.panel.frame.minX + 90,
+                              y: outer.panel.frame.maxY - 20)
+awaitMouseState("Waveform and empty areas route unlocked clicks to the background") {
+    mouseTarget(railCenter) == outer.panel.windowNumber &&
+    mouseTarget(emptyBackground) == outer.panel.windowNumber &&
+    mouseTarget(clickGap) == outer.panel.windowNumber
+}
+outer.setLocked(true)
+controls.setLocked(true)
+awaitMouseState("Locked background passes through while transport and lock still work") {
+    mouseTarget(railCenter) != outer.panel.windowNumber &&
+    mouseTarget(emptyBackground) != outer.panel.windowNumber &&
+    mouseTarget(clickGap) != outer.panel.windowNumber &&
+    mouseTarget(lockCenter) == controls.controlPanels[1].windowNumber &&
+    mouseTarget(dragCenter) != controls.controlPanels[0].windowNumber
+}
+outer.setLocked(false)
+controls.setLocked(false)
+awaitMouseState("Unlocking immediately restores whole-background hit targets") {
+    mouseTarget(emptyBackground) == outer.panel.windowNumber
+}
+rail.setVisible(false)
+outer.setVisible(false)
+controls.setVisible(false)
 
 let settings = StyleSettingsPanel(style: .defaultValue)
 let wells = settings.panel.contentView!.subviews.compactMap { $0 as? NSColorWell }

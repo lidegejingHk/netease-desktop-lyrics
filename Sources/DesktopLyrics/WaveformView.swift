@@ -1,6 +1,6 @@
 import AppKit
 
-/// An ambient playback indicator, not a sound meter or an audio input.
+/// Decorative motion derived from playback state, never from the microphone or system audio.
 enum WaveformMotion {
     static func shouldAnimate(playing: Bool, reduceMotion: Bool) -> Bool {
         playing && !reduceMotion
@@ -8,25 +8,23 @@ enum WaveformMotion {
 }
 
 final class WaveformView: NSView {
-    private let bars = (0..<5).map { _ in CALayer() }
+    static let barCount = 116
+    private let bars = (0..<barCount).map { _ in CALayer() }
     private var timer: Timer?
     private var phase = 0
     private var playing = false
     private var overlayVisible = true
+    private var tint = NSColor.white
+    private var progress: CGFloat = 0
     var reduceMotionProvider: () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
-    private static let steps: [[CGFloat]] = [
-        [6, 13, 8, 18, 10], [11, 8, 17, 12, 6], [17, 12, 7, 15, 9],
-        [8, 18, 11, 7, 15], [14, 9, 16, 10, 7]
-    ]
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
         for bar in bars {
-            bar.cornerRadius = 2
+            bar.cornerRadius = 1
             layer?.addSublayer(bar)
         }
-        setTint(.white)
         setAccessibilityElement(false)
         NSWorkspace.shared.notificationCenter.addObserver(self,
             selector: #selector(accessibilityOptionsChanged(_:)),
@@ -44,7 +42,13 @@ final class WaveformView: NSView {
     var isAnimating: Bool { timer != nil }
 
     func setTint(_ color: NSColor) {
-        for bar in bars { bar.backgroundColor = color.cgColor }
+        tint = color
+        updateBars()
+    }
+
+    func setProgress(_ value: CGFloat) {
+        progress = min(1, max(0, value))
+        updateBars()
     }
 
     func setPlaying(_ value: Bool) {
@@ -57,13 +61,9 @@ final class WaveformView: NSView {
         updateMotion()
     }
 
-    func refreshMotionPreference() {
-        updateMotion()
-    }
+    func refreshMotionPreference() { updateMotion() }
 
-    @objc private func accessibilityOptionsChanged(_ notification: Notification) {
-        updateMotion()
-    }
+    @objc private func accessibilityOptionsChanged(_ notification: Notification) { updateMotion() }
 
     private func updateMotion() {
         let animate = overlayVisible && WaveformMotion.shouldAnimate(
@@ -71,7 +71,7 @@ final class WaveformView: NSView {
         if animate, timer == nil {
             let timer = Timer(timeInterval: 0.11, repeats: true) { [weak self] _ in
                 guard let self else { return }
-                self.phase = (self.phase + 1) % Self.steps.count
+                self.phase = (self.phase + 1) % 60
                 self.updateBars()
             }
             self.timer = timer
@@ -90,14 +90,21 @@ final class WaveformView: NSView {
     }
 
     private func updateBars() {
-        let heights = isAnimating ? Self.steps[phase] : [5, 7, 9, 7, 5]
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        let spacing = bounds.width / CGFloat(Self.barCount)
         for (index, bar) in bars.enumerated() {
-            let height = heights[index]
-            bar.frame = NSRect(x: CGFloat(index) * 8 + 2,
+            // Sparse waves with small in-between movement read as a continuous
+            // horizon instead of five large meters tucked in a corner.
+            let wave = abs(sin(CGFloat(index) * 0.23 + CGFloat(phase) * 0.31))
+            let swell = abs(sin(CGFloat(index) * 0.061 - CGFloat(phase) * 0.15))
+            let height: CGFloat = isAnimating ? 3 + (wave * 0.45 + swell * 0.55) * 15 : 4 + wave * 7
+            let x = CGFloat(index) * spacing
+            bar.frame = NSRect(x: x + (spacing - 2) / 2,
                                y: (bounds.height - height) / 2,
-                               width: 3, height: height)
+                               width: 2, height: height)
+            bar.backgroundColor = tint.withAlphaComponent(
+                CGFloat(index) / CGFloat(Self.barCount) <= progress ? 0.88 : 0.27).cgColor
         }
         CATransaction.commit()
     }

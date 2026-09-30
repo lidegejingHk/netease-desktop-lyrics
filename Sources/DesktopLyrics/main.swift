@@ -17,6 +17,8 @@ private struct LyricEvent: Decodable {
 private final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var panel: NSPanel!
     private var content: LyricsView!
+    private var outerFrame: OverlayFrame!
+    private var rail: WaveformRail!
     private var statusItem: NSStatusItem!
     private var toggleItem: NSMenuItem!
     private var lockItem: NSMenuItem!
@@ -41,6 +43,8 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         configureWindow()
+        configureOuterFrame()
+        configureRail()
         configureControls()
         configureMenu()
         NotificationCenter.default.addObserver(self, selector: #selector(screenParametersChanged(_:)),
@@ -59,47 +63,63 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     }
 
     private func configureWindow() {
-        let frame = NSRect(x: 0, y: 0, width: 860, height: 176)
-        panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        let frame = NSRect(origin: .zero, size: OverlayLayout.lyricSize)
+        panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
+                        backing: .buffered, defer: false)
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.hidesOnDeactivate = false
-        panel.isMovableByWindowBackground = true
+        panel.isMovableByWindowBackground = false
         panel.ignoresMouseEvents = locked
         panel.delegate = self
         content = LyricsView(frame: frame)
+        content.onDrag = { [weak self] delta in self?.moveOverlay(by: delta) }
         content.applyStyle(styleStore.load())
-        content.setOverlayVisible(showing)
         panel.contentView = content
         if let point = UserDefaults.standard.dictionary(forKey: "overlayOrigin"),
            let x = point["x"] as? Double, let y = point["y"] as? Double,
-           x.isFinite, y.isFinite, let screen = NSScreen.screens.first(where: { $0.frame.contains(NSPoint(x: x, y: y)) }) {
-            let validX = min(max(x, screen.visibleFrame.minX),
-                             max(screen.visibleFrame.minX, screen.visibleFrame.maxX - frame.width))
-            let validY = min(max(y, screen.visibleFrame.minY),
-                             max(screen.visibleFrame.minY, screen.visibleFrame.maxY - frame.height))
-            panel.setFrameOrigin(NSPoint(x: validX, y: validY))
+           x.isFinite, y.isFinite {
+            let proposed = NSRect(origin: NSPoint(x: x, y: y), size: frame.size)
+            panel.setFrameOrigin(OverlayLayout.constrainedOrigin(
+                for: proposed, visibleFrames: NSScreen.screens.map(\.visibleFrame)))
         } else if let screen = NSScreen.main {
             let area = screen.visibleFrame
-            panel.setFrameOrigin(NSPoint(x: area.midX - frame.width / 2, y: area.minY + 85))
+            let target = NSRect(x: area.midX - OverlayLayout.outerSize.width / 2 +
+                                   OverlayLayout.lyricInset.x,
+                                y: area.minY + 85 + OverlayLayout.lyricInset.y,
+                                width: frame.width, height: frame.height)
+            panel.setFrameOrigin(OverlayLayout.constrainedOrigin(
+                for: target, visibleFrames: [area]))
         } else {
             panel.center()
         }
+    }
+
+    private func configureOuterFrame() {
+        outerFrame = OverlayFrame()
+        outerFrame.applyStyle(styleStore.load())
+        outerFrame.setLocked(locked)
+        outerFrame.onDrag = { [weak self] delta in self?.moveOverlay(by: delta) }
+        outerFrame.follow(lyrics: panel.frame)
+        outerFrame.setVisible(showing)
         if showing { panel.orderFrontRegardless() }
+    }
+
+    private func configureRail() {
+        rail = WaveformRail()
+        rail.applyStyle(styleStore.load())
+        rail.follow(lyrics: panel.frame)
+        rail.setVisible(showing)
     }
 
     private func configureControls() {
         controls = OverlayControls()
         controls.setLocked(locked)
         controls.setCollapsed(collapsed)
-        controls.onDrag = { [weak self] delta in
-            guard let self, !self.locked else { return }
-            self.panel.setFrameOrigin(NSPoint(x: self.panel.frame.minX + delta.x,
-                                               y: self.panel.frame.minY + delta.y))
-        }
+        controls.onDrag = { [weak self] delta in self?.moveOverlay(by: delta) }
         controls.onToggleLock = { [weak self] in self?.changeLock() }
         controls.onToggleCollapsed = { [weak self] in self?.changeCollapsed() }
         controls.onToggleSettings = { [weak self] in self?.showOrHideSettings() }
@@ -117,7 +137,9 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         settingsWindow.onStyleChange = { [weak self] style in
             self?.styleStore.save(style)
             self?.content.applyStyle(style)
+            self?.outerFrame.applyStyle(style)
             self?.controls.applyStyle(style)
+            self?.rail.applyStyle(style)
         }
         controls.applyStyle(styleStore.load())
         updateControlsPosition()
@@ -169,25 +191,43 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         }
     }
 
+    /// The lyric panel is the group's single position source. The enclosing panel
+    /// never moves itself, so there is no two-window delegate feedback loop.
+    private func moveOverlay(by delta: NSPoint) {
+        guard !locked, let panel else { return }
+        let proposed = panel.frame.offsetBy(dx: delta.x, dy: delta.y)
+        let origin = OverlayLayout.constrainedOrigin(
+            for: proposed, visibleFrames: NSScreen.screens.map(\.visibleFrame))
+        guard origin != panel.frame.origin else { return }
+        panel.setFrameOrigin(origin)
+        syncOverlayPosition()
+    }
+
     private func updateControlsPosition() {
-        guard let controls, let panel else { return }
-        controls.follow(overlay: panel.frame, visibleFrames: NSScreen.screens.map(\.visibleFrame))
-        content.setControlsFrame(controls.panel.frame.offsetBy(dx: -panel.frame.minX,
-                                                               dy: -panel.frame.minY))
+        guard let panel else { return }
+        outerFrame?.follow(lyrics: panel.frame)
+        controls?.follow(overlay: panel.frame)
+        rail?.follow(lyrics: panel.frame)
+    }
+
+    private func syncOverlayPosition() {
+        guard let panel else { return }
+        updateControlsPosition()
+        UserDefaults.standard.set(["x": Double(panel.frame.minX), "y": Double(panel.frame.minY)],
+                                  forKey: "overlayOrigin")
     }
 
     func windowDidMove(_ notification: Notification) {
-        guard panel != nil else { return }
-        UserDefaults.standard.set(["x": Double(panel.frame.minX), "y": Double(panel.frame.minY)], forKey: "overlayOrigin")
-        updateControlsPosition()
+        guard let panel, notification.object as? NSWindow === panel else { return }
+        syncOverlayPosition()
     }
 
     func windowDidChangeScreen(_ notification: Notification) { updateControlsPosition() }
 
     @objc private func screenParametersChanged(_ notification: Notification) {
         guard panel != nil else { return }
-        let origin = OverlayVisibility.origin(for: panel.frame,
-                                              visibleFrames: NSScreen.screens.map(\.visibleFrame))
+        let origin = OverlayLayout.constrainedOrigin(
+            for: panel.frame, visibleFrames: NSScreen.screens.map(\.visibleFrame))
         if origin != panel.frame.origin { panel.setFrameOrigin(origin) }
         updateControlsPosition()
     }
@@ -226,9 +266,10 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
 
     @objc private func toggleVisible(_ sender: NSMenuItem) {
         showing.toggle()
+        outerFrame.setVisible(showing)
         if showing { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
         controls.setVisible(showing)
-        content.setOverlayVisible(showing)
+        rail.setVisible(showing)
         if !showing { settingsWindow.close() }
         UserDefaults.standard.set(showing, forKey: "overlayShowing")
         toggleItem.title = showing ? "隐藏歌词" : "显示歌词"
@@ -247,6 +288,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private func changeLock() {
         locked.toggle()
         panel.ignoresMouseEvents = locked
+        outerFrame.setLocked(locked)
         controls.setLocked(locked)
         UserDefaults.standard.set(locked, forKey: "overlayLocked")
         lockItem.title = locked ? "解锁位置（可拖动）" : "锁定位置（点击穿透）"
@@ -334,8 +376,8 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         switch event.kind {
         case "loading": showStatus("正在获取当前歌曲歌词…")
         case "intro":
-            content.show(primary: "♪ 即将开始", secondary: event.next ?? "", fraction: 0,
-                         active: true, playing: event.playing == true)
+            content.show(primary: "♪ 即将开始", secondary: event.next ?? "")
+            rail.show(fraction: 0, active: true, playing: event.playing == true)
         case "line":
             let subtitle = event.translation?.isEmpty == false
                 ? event.translation! : (event.next ?? "")
@@ -346,8 +388,8 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
             let fraction: CGFloat = end > start
                 ? CGFloat(min(elapsed.saturatingSubtracting(start), end - start)) / CGFloat(end - start)
                 : 1
-            content.show(primary: event.text ?? "", secondary: secondary, fraction: fraction,
-                         active: true, playing: event.playing == true)
+            content.show(primary: event.text ?? "", secondary: secondary)
+            rail.show(fraction: fraction, active: true, playing: event.playing == true)
         case "unavailable": showStatus(message(for: event.reason))
         default: showStatus("未知的歌词引擎状态")
         }
@@ -370,7 +412,8 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     }
 
     private func showStatus(_ message: String) {
-        content.show(primary: message, secondary: "右上角按钮可拖动、锁定并设置颜色与透明度", fraction: 0, active: false)
+        content.show(primary: message, secondary: "")
+        rail?.show(fraction: 0, active: false, playing: false)
     }
 
     func applicationWillTerminate(_ notification: Notification) {

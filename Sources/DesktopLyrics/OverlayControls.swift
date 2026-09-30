@@ -4,9 +4,9 @@ import AppKit
 final class OverlayControls: NSObject {
     static let expandedSize = NSSize(width: ToolbarPlacement.expandedWidth,
                                      height: ToolbarPlacement.expandedHeight)
-    static let collapsedSize = NSSize(width: 38, height: 38)
+    static let collapsedSize = OverlayLayout.collapsedToolbarSize
 
-    /// Invisible layout frame; only the small control windows receive mouse events.
+    /// Transparent layout panel; only the small icon windows receive events.
     let panel: NSPanel
     private(set) var controlPanels: [NSPanel] = []
     var onDrag: ((NSPoint) -> Void)?
@@ -28,16 +28,23 @@ final class OverlayControls: NSObject {
     private(set) var isCollapsed = false
     private var isVisible = false
     private var lastOverlay = NSRect.zero
-    private var lastVisibleFrames: [NSRect] = []
 
     override init() {
         panel = NSPanel(contentRect: NSRect(origin: .zero, size: Self.expandedSize),
                         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init()
+        panel.level = .floating
+        panel.animationBehavior = .none
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
+        panel.hidesOnDeactivate = false
         panel.ignoresMouseEvents = true
+        let backdrop = NSView(frame: NSRect(origin: .zero, size: Self.expandedSize))
+        backdrop.wantsLayer = true
+        backdrop.layer?.backgroundColor = NSColor.clear.cgColor
+        panel.contentView = backdrop
 
         dragHandle.onDrag = { [weak self] delta in self?.onDrag?(delta) }
         makeButton(lockButton, symbol: "lock.open", fallback: "◇", label: "锁定歌词位置", action: #selector(toggleLock))
@@ -73,6 +80,7 @@ final class OverlayControls: NSObject {
 
     func applyStyle(_ style: OverlayStyle) {
         let tint = OverlayStyle.nsColor(style.textRGB) ?? .white
+        panel.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
         dragHandle.tintColor = tint
         for button in [lockButton, settingsButton, collapseButton, expandButton,
                        previousButton, playbackButton, nextButton] {
@@ -140,22 +148,24 @@ final class OverlayControls: NSObject {
         previousButton.isHidden = collapsed
         playbackButton.isHidden = collapsed
         nextButton.isHidden = collapsed
-        panel.setContentSize(collapsed ? Self.collapsedSize : Self.expandedSize)
-        follow(overlay: lastOverlay, visibleFrames: lastVisibleFrames)
+        let size = collapsed ? Self.collapsedSize : Self.expandedSize
+        panel.setContentSize(size)
+        panel.contentView?.frame = NSRect(origin: .zero, size: size)
+        follow(overlay: lastOverlay)
         updateVisiblePanels()
     }
 
-    func follow(overlay: NSRect, visibleFrames: [NSRect]) {
+    func follow(overlay: NSRect) {
         lastOverlay = overlay
-        lastVisibleFrames = visibleFrames
         let point = ToolbarPlacement.origin(overlay: overlay,
-                                            size: isCollapsed ? Self.collapsedSize : Self.expandedSize,
-                                            visibleFrames: visibleFrames)
+                                            size: isCollapsed ? Self.collapsedSize : Self.expandedSize)
         panel.setFrameOrigin(point)
-        let offsets: [NSPoint] = [NSPoint(x: 7, y: 3), NSPoint(x: 46, y: 3),
-                                  NSPoint(x: 85, y: 3), NSPoint(x: 124, y: 3),
-                                  NSPoint(x: 2, y: 3), NSPoint(x: 26, y: 43),
-                                  NSPoint(x: 65, y: 43), NSPoint(x: 104, y: 43)]
+        // Playback first, then placement and appearance; all seven controls are
+        // a single row inside the independent upper-right toolbar.
+        let offsets: [NSPoint] = [NSPoint(x: 121, y: 6), NSPoint(x: 159, y: 6),
+                                  NSPoint(x: 197, y: 6), NSPoint(x: 235, y: 6),
+                                  NSPoint(x: 1, y: 6), NSPoint(x: 7, y: 6),
+                                  NSPoint(x: 45, y: 6), NSPoint(x: 83, y: 6)]
         for (window, offset) in zip(controlPanels, offsets) {
             window.setFrameOrigin(NSPoint(x: point.x + offset.x, y: point.y + offset.y))
         }
@@ -167,6 +177,7 @@ final class OverlayControls: NSObject {
     }
 
     private func updateVisiblePanels() {
+        if isVisible { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
         for (index, window) in controlPanels.enumerated() {
             let shouldShow = isVisible && (isCollapsed ? index == 4 : index != 4)
             if shouldShow { window.orderFrontRegardless() } else { window.orderOut(nil) }

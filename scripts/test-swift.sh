@@ -8,9 +8,12 @@ xcrun swiftc -target arm64-apple-macos13.0 -warnings-as-errors \
   "$root/Sources/DesktopLyrics/LaunchMode.swift" \
   "$root/Sources/DesktopLyrics/OverlayStyle.swift" \
   "$root/Sources/DesktopLyrics/ToolbarPlacement.swift" \
+  "$root/Sources/DesktopLyrics/OverlayLayout.swift" \
+  "$root/Sources/DesktopLyrics/OverlayFrameView.swift" \
   "$root/Sources/DesktopLyrics/OverlayVisibility.swift" \
   "$root/Sources/DesktopLyrics/LyricsView.swift" \
   "$root/Sources/DesktopLyrics/WaveformView.swift" \
+  "$root/Sources/DesktopLyrics/WaveformRailView.swift" \
   "$root/Sources/DesktopLyrics/OverlayControls.swift" \
   "$root/Sources/DesktopLyrics/PlaybackTransport.swift" \
   "$root/Sources/DesktopLyrics/StyleSettingsPanel.swift" \

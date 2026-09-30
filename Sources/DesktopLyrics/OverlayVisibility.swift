@@ -1,23 +1,28 @@
 import AppKit
 
-/// Compute a safe origin after a display layout changes, preserving on-screen placement.
+/// Clamp the complete overlay background, not just its lyric content, to a display.
 enum OverlayVisibility {
-    static func origin(for overlay: NSRect, visibleFrames: [NSRect]) -> NSPoint {
-        guard !visibleFrames.isEmpty else { return overlay.origin }
-        let intersects = visibleFrames.contains { screen in
-            let visible = screen.intersection(overlay)
-            return !visible.isNull
-                && visible.width >= min(overlay.width, screen.width) / 2
-                && visible.height >= min(overlay.height, screen.height) / 2
-        }
-        if intersects { return overlay.origin }
-        let target = visibleFrames.min(by: { first, second in
-            hypot(first.midX - overlay.midX, first.midY - overlay.midY)
-                < hypot(second.midX - overlay.midX, second.midY - overlay.midY)
+    static func origin(for envelope: NSRect, visibleFrames: [NSRect]) -> NSPoint {
+        guard !visibleFrames.isEmpty else { return envelope.origin }
+        if visibleFrames.contains(where: { $0.contains(envelope) }) { return envelope.origin }
+        let target = visibleFrames.max(by: { first, second in
+            let areaA = intersectionArea(first, envelope)
+            let areaB = intersectionArea(second, envelope)
+            if areaA != areaB { return areaA < areaB }
+            return hypot(first.midX - envelope.midX, first.midY - envelope.midY)
+                > hypot(second.midX - envelope.midX, second.midY - envelope.midY)
         })!
-        return NSPoint(x: min(max(overlay.minX, target.minX),
-                              max(target.minX, target.maxX - overlay.width)),
-                       y: min(max(overlay.minY, target.minY),
-                              max(target.minY, target.maxY - overlay.height)))
+        // A very narrow display cannot contain the complete group. Preserve the
+        // upper-right playback and expand controls rather than the left lyric edge.
+        let x = envelope.width > target.width ? target.maxX - envelope.width
+            : min(max(envelope.minX, target.minX), target.maxX - envelope.width)
+        let y = envelope.height > target.height ? target.maxY - envelope.height
+            : min(max(envelope.minY, target.minY), target.maxY - envelope.height)
+        return NSPoint(x: x, y: y)
+    }
+
+    private static func intersectionArea(_ first: NSRect, _ second: NSRect) -> CGFloat {
+        let intersection = first.intersection(second)
+        return intersection.isNull ? 0 : intersection.width * intersection.height
     }
 }
