@@ -47,6 +47,8 @@ final class OverlayControls: NSObject {
         let window = NSPanel(contentRect: NSRect(origin: .zero, size: NSSize(width: 34, height: 32)),
                              styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         window.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
+        // Reordering panels must not leave a fading, visually present control unable to receive clicks.
+        window.animationBehavior = .none
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isOpaque = false
         window.backgroundColor = .clear

@@ -155,7 +155,7 @@ check(controls.panel.ignoresMouseEvents && !controls.panel.isVisible,
 check(controls.controlPanels.count == 5 &&
       controls.controlPanels.allSatisfy {
           !$0.hasShadow && !$0.isOpaque && !$0.hidesOnDeactivate &&
-          $0.collectionBehavior.contains(.canJoinAllSpaces)
+          $0.collectionBehavior.contains(.canJoinAllSpaces) && $0.animationBehavior == .none
       },
       "Only individual 34-point control windows can receive clicks")
 let handle = controls.controlPanels[0].contentView!
@@ -244,6 +244,76 @@ check(near(controls.controlPanels[4].frame.maxX, controls.panel.frame.maxX - 2),
 controls.setVisible(false)
 check(controls.controlPanels.allSatisfy { !$0.isVisible },
       "Hiding lyrics also removes all toolbar hit targets")
+
+// Exercise the window server's real mouse target selection, not just view hitTest.
+// Window ordering and ignoresMouseEvents cross a process boundary, so wait for
+// WindowServer's state rather than assuming the next instruction sees the change.
+let liveScreen = NSScreen.main!.visibleFrame
+let liveOverlay = NSRect(x: liveScreen.midX - 380, y: liveScreen.midY - 56,
+                         width: 760, height: 112)
+let lyricPanel = NSPanel(contentRect: liveOverlay, styleMask: [.borderless, .nonactivatingPanel],
+                         backing: .buffered, defer: false)
+lyricPanel.level = .floating
+lyricPanel.orderFrontRegardless()
+controls.follow(overlay: liveOverlay, visibleFrames: [liveScreen])
+controls.setCollapsed(false)
+controls.setLocked(false)
+controls.setVisible(true)
+let clickGap = NSPoint(x: controls.panel.frame.minX + 43,
+                       y: controls.panel.frame.minY + 19)
+func mouseTarget(_ point: NSPoint) -> Int {
+    NSWindow.windowNumber(at: point, belowWindowWithWindowNumber: 0)
+}
+func awaitMouseState(_ message: String, _ matches: () -> Bool) {
+    let deadline = Date().addingTimeInterval(2)
+    while Date() < deadline {
+        if matches() { return }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+    }
+    fatalError(message)
+}
+func expandedButtonsReceiveClicks() -> Bool {
+    controls.controlPanels.prefix(4).allSatisfy { window in
+        mouseTarget(NSPoint(x: window.frame.midX, y: window.frame.midY)) == window.windowNumber
+    }
+}
+let dragCenter = NSPoint(x: controls.controlPanels[0].frame.midX,
+                         y: controls.controlPanels[0].frame.midY)
+let lockCenter = NSPoint(x: controls.controlPanels[1].frame.midX,
+                         y: controls.controlPanels[1].frame.midY)
+awaitMouseState("All four buttons receive clicks; the gap reaches unlocked lyrics") {
+    expandedButtonsReceiveClicks() && mouseTarget(clickGap) == lyricPanel.windowNumber
+}
+controls.setVisible(false)
+awaitMouseState("Hidden controls leave no mouse targets over the lyrics") {
+    mouseTarget(dragCenter) == lyricPanel.windowNumber &&
+    mouseTarget(lockCenter) == lyricPanel.windowNumber
+}
+controls.setVisible(true)
+awaitMouseState("Buttons work immediately after showing the toolbar again") {
+    expandedButtonsReceiveClicks() && mouseTarget(clickGap) == lyricPanel.windowNumber
+}
+controls.setCollapsed(true)
+let expandPanel = controls.controlPanels[4]
+let expandCenter = NSPoint(x: expandPanel.frame.midX, y: expandPanel.frame.midY)
+awaitMouseState("Collapsed toolbar retains its clickable expand button") {
+    mouseTarget(expandCenter) == expandPanel.windowNumber &&
+    mouseTarget(dragCenter) == lyricPanel.windowNumber
+}
+controls.setCollapsed(false)
+awaitMouseState("All controls can receive clicks after expanding again") {
+    expandedButtonsReceiveClicks() && mouseTarget(clickGap) == lyricPanel.windowNumber
+}
+controls.setLocked(true)
+lyricPanel.ignoresMouseEvents = true
+awaitMouseState("Locked lyrics and drag handle pass clicks through, but lock stays clickable") {
+    mouseTarget(lockCenter) == controls.controlPanels[1].windowNumber &&
+    mouseTarget(dragCenter) != controls.controlPanels[0].windowNumber &&
+    mouseTarget(dragCenter) != lyricPanel.windowNumber &&
+    mouseTarget(clickGap) != lyricPanel.windowNumber
+}
+controls.setVisible(false)
+lyricPanel.orderOut(nil)
 
 controls.setLocked(false)
 var overlayForDrag = NSRect(x: 100, y: 100, width: 760, height: 112)
