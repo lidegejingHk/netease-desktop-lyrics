@@ -6,8 +6,9 @@ final class OverlayControls: NSObject {
                                      height: ToolbarPlacement.expandedHeight)
     static let collapsedSize = OverlayLayout.collapsedToolbarSize
 
-    /// Transparent layout panel; only the small icon windows receive events.
+    /// Separate transparent layout panels; only the individual icons receive events.
     let panel: NSPanel
+    let playbackPanel: NSPanel
     private(set) var controlPanels: [NSPanel] = []
     var onDrag: ((NSPoint) -> Void)?
     var onToggleLock: (() -> Void)?
@@ -32,19 +33,24 @@ final class OverlayControls: NSObject {
     override init() {
         panel = NSPanel(contentRect: NSRect(origin: .zero, size: Self.expandedSize),
                         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        playbackPanel = NSPanel(contentRect: NSRect(origin: .zero, size: OverlayLayout.playbackSize),
+                                styleMask: [.borderless, .nonactivatingPanel],
+                                backing: .buffered, defer: false)
         super.init()
-        panel.level = .floating
-        panel.animationBehavior = .none
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = false
-        panel.hidesOnDeactivate = false
-        panel.ignoresMouseEvents = true
-        let backdrop = NSView(frame: NSRect(origin: .zero, size: Self.expandedSize))
-        backdrop.wantsLayer = true
-        backdrop.layer?.backgroundColor = NSColor.clear.cgColor
-        panel.contentView = backdrop
+        for window in [panel, playbackPanel] {
+            window.level = .floating
+            window.animationBehavior = .none
+            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            window.hasShadow = false
+            window.hidesOnDeactivate = false
+            window.ignoresMouseEvents = true
+            let backdrop = NSView(frame: NSRect(origin: .zero, size: window.frame.size))
+            backdrop.wantsLayer = true
+            backdrop.layer?.backgroundColor = NSColor.clear.cgColor
+            window.contentView = backdrop
+        }
 
         dragHandle.onDrag = { [weak self] delta in self?.onDrag?(delta) }
         makeButton(lockButton, symbol: "lock.open", fallback: "◇", label: "锁定歌词位置", action: #selector(toggleLock))
@@ -54,16 +60,22 @@ final class OverlayControls: NSObject {
         makeButton(previousButton, symbol: "backward.end.fill", fallback: "❮", label: "上一首", action: #selector(previousTrack))
         makeButton(playbackButton, symbol: "play.fill", fallback: "▶", label: "播放", action: #selector(togglePlayback))
         makeButton(nextButton, symbol: "forward.end.fill", fallback: "❯", label: "下一首", action: #selector(nextTrack))
-        for view in [dragHandle, lockButton, settingsButton, collapseButton, expandButton,
-                     previousButton, playbackButton, nextButton] {
-            controlPanels.append(makeControlPanel(for: view))
+        for (index, view) in [dragHandle, lockButton, settingsButton, collapseButton, expandButton,
+                              previousButton, playbackButton, nextButton].enumerated() {
+            let size: NSSize
+            switch index {
+            case 5, 7: size = NSSize(width: 34, height: 30)
+            case 6: size = NSSize(width: 38, height: 32)
+            default: size = NSSize(width: 34, height: 32)
+            }
+            controlPanels.append(makeControlPanel(for: view, size: size))
         }
         expandButton.isHidden = true
         setPlaybackAvailability(previous: false, toggle: .unavailable, next: false)
     }
 
-    private func makeControlPanel(for view: NSView) -> NSPanel {
-        let window = NSPanel(contentRect: NSRect(origin: .zero, size: NSSize(width: 34, height: 32)),
+    private func makeControlPanel(for view: NSView, size: NSSize) -> NSPanel {
+        let window = NSPanel(contentRect: NSRect(origin: .zero, size: size),
                              styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         window.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         // Reordering panels must not leave a fading, visually present control unable to receive clicks.
@@ -74,6 +86,7 @@ final class OverlayControls: NSObject {
         window.hasShadow = false
         window.hidesOnDeactivate = false
         window.ignoresMouseEvents = false
+        view.frame = NSRect(origin: .zero, size: size)
         window.contentView = view
         return window
     }
@@ -81,10 +94,13 @@ final class OverlayControls: NSObject {
     func applyStyle(_ style: OverlayStyle) {
         let tint = OverlayStyle.nsColor(style.textRGB) ?? .white
         panel.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
+        playbackPanel.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
         dragHandle.tintColor = tint
         for button in [lockButton, settingsButton, collapseButton, expandButton,
                        previousButton, playbackButton, nextButton] {
-            button.contentTintColor = tint.withAlphaComponent(0.94)
+            let opacity: CGFloat = button === playbackButton ? 1.0
+                : ((button === previousButton || button === nextButton) ? 0.84 : 0.94)
+            button.contentTintColor = tint.withAlphaComponent(opacity)
         }
     }
 
@@ -103,7 +119,9 @@ final class OverlayControls: NSObject {
 
     private func updateImage(_ button: NSButton, symbol: String, fallback: String) {
         if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
-            button.image = image
+            let size: CGFloat = button === playbackButton ? 19 : 16
+            let configuration = NSImage.SymbolConfiguration(pointSize: size, weight: .medium)
+            button.image = image.withSymbolConfiguration(configuration) ?? image
             button.imagePosition = .imageOnly
         } else {
             button.image = nil
@@ -121,6 +139,11 @@ final class OverlayControls: NSObject {
         previousButton.isEnabled = previous
         nextButton.isEnabled = next
         playbackButton.isEnabled = toggle != .unavailable
+        // The transparent layout surface never intercepts clicks. A disabled
+        // icon should behave likewise, particularly when the frame is locked.
+        for (index, button) in [(5, previousButton), (6, playbackButton), (7, nextButton)] {
+            controlPanels[index].ignoresMouseEvents = !button.isEnabled
+        }
         let shouldPause = toggle == .pause
         let label = shouldPause ? "暂停" : "播放"
         playbackButton.toolTip = label
@@ -145,9 +168,6 @@ final class OverlayControls: NSObject {
         settingsButton.isHidden = collapsed
         collapseButton.isHidden = collapsed
         expandButton.isHidden = !collapsed
-        previousButton.isHidden = collapsed
-        playbackButton.isHidden = collapsed
-        nextButton.isHidden = collapsed
         let size = collapsed ? Self.collapsedSize : Self.expandedSize
         panel.setContentSize(size)
         panel.contentView?.frame = NSRect(origin: .zero, size: size)
@@ -160,14 +180,19 @@ final class OverlayControls: NSObject {
         let point = ToolbarPlacement.origin(overlay: overlay,
                                             size: isCollapsed ? Self.collapsedSize : Self.expandedSize)
         panel.setFrameOrigin(point)
-        // Playback first, then placement and appearance; all seven controls are
-        // a single row inside the independent upper-right toolbar.
-        let offsets: [NSPoint] = [NSPoint(x: 121, y: 6), NSPoint(x: 159, y: 6),
-                                  NSPoint(x: 197, y: 6), NSPoint(x: 235, y: 6),
-                                  NSPoint(x: 1, y: 6), NSPoint(x: 7, y: 6),
-                                  NSPoint(x: 45, y: 6), NSPoint(x: 83, y: 6)]
-        for (window, offset) in zip(controlPanels, offsets) {
-            window.setFrameOrigin(NSPoint(x: point.x + offset.x, y: point.y + offset.y))
+        let toolOrigin = ToolbarPlacement.origin(overlay: overlay, size: Self.expandedSize)
+        let toolOffsets: [CGFloat] = [3, 43, 83, 123]
+        for (index, x) in toolOffsets.enumerated() {
+            controlPanels[index].setFrameOrigin(NSPoint(x: toolOrigin.x + x,
+                                                        y: toolOrigin.y + 2))
+        }
+        controlPanels[4].setFrameOrigin(NSPoint(x: point.x + 4, y: point.y + 2))
+
+        let playback = OverlayLayout.playbackFrame(for: overlay)
+        playbackPanel.setFrameOrigin(playback.origin)
+        for (index, x) in zip(5...7, [CGFloat(3), 47, 95]) {
+            controlPanels[index].setFrameOrigin(NSPoint(x: playback.minX + x,
+                                                        y: playback.minY + (index == 6 ? 0 : 1)))
         }
     }
 
@@ -177,9 +202,15 @@ final class OverlayControls: NSObject {
     }
 
     private func updateVisiblePanels() {
-        if isVisible { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
+        if isVisible {
+            panel.orderFrontRegardless()
+            playbackPanel.orderFrontRegardless()
+        } else {
+            panel.orderOut(nil)
+            playbackPanel.orderOut(nil)
+        }
         for (index, window) in controlPanels.enumerated() {
-            let shouldShow = isVisible && (isCollapsed ? index == 4 : index != 4)
+            let shouldShow = isVisible && (index >= 5 || (isCollapsed ? index == 4 : index < 4))
             if shouldShow { window.orderFrontRegardless() } else { window.orderOut(nil) }
         }
     }
