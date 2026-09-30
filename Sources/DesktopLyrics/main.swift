@@ -94,7 +94,9 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         settingsWindow.onStyleChange = { [weak self] style in
             self?.styleStore.save(style)
             self?.content.applyStyle(style)
+            self?.controls.applyStyle(style)
         }
+        controls.applyStyle(styleStore.load())
         updateControlsPosition()
         if showing { controls.setVisible(true) }
     }
@@ -102,6 +104,8 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private func updateControlsPosition() {
         guard let controls, let panel else { return }
         controls.follow(overlay: panel.frame, visibleFrames: NSScreen.screens.map(\.visibleFrame))
+        content.setControlsFrame(controls.panel.frame.offsetBy(dx: -panel.frame.minX,
+                                                               dy: -panel.frame.minY))
     }
 
     func windowDidMove(_ notification: Notification) {
@@ -169,6 +173,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private func changeCollapsed() {
         collapsed.toggle()
         controls.setCollapsed(collapsed)
+        updateControlsPosition()
         UserDefaults.standard.set(collapsed, forKey: "toolbarCollapsed")
     }
 

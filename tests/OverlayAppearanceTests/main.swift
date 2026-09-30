@@ -135,6 +135,15 @@ check(controls.panel.contentView!.layer!.backgroundColor!.alpha == 0 &&
       controls.panel.contentView!.layer!.borderWidth == 0,
       "Controls have no detached pill background or outline")
 let handle = controls.panel.contentView!.subviews.first!
+let styledToolbar = OverlayStyle(backgroundRGB: "#112233", textRGB: "#20CF80", chipRGB: "#000000",
+                                 backgroundOpacity: 0.3, chipOpacity: 0.5)
+controls.applyStyle(styledToolbar)
+let handleGlyph = handle.subviews.first as! NSTextField
+check(OverlayStyle.rgbHex(handleGlyph.textColor!) == "#20CF80",
+      "Drag handle tint follows the lyric text color")
+check(controls.panel.contentView!.subviews.compactMap { $0 as? NSButton }
+    .allSatisfy { OverlayStyle.rgbHex($0.contentTintColor!) == "#20CF80" },
+      "All toolbar icons follow the lyric text color")
 check(handle.isAccessibilityElement() && handle.accessibilityRole() == .button,
       "Drag handle is exposed as an accessible control")
 func movementEvent(x: CGFloat, y: CGFloat, deltaX: Int64, deltaY: Int64) -> NSEvent {
@@ -167,12 +176,18 @@ check(tappedLock == 1 && tappedSettings == 1 && tappedCollapse == 1,
       "Toolbar actions dispatch to their owning controller")
 controls.setLocked(true)
 check(!controls.panel.ignoresMouseEvents, "Toolbar stays interactive while lyrics lock")
+check(handleGlyph.textColor!.alphaComponent < 0.5,
+      "Locked drag handle dims while remaining visible")
 dragDelta = .zero
 handle.mouseDown(with: mouseDown)
 handle.mouseDragged(with: movementEvent(x: 35, y: 22, deltaX: 25, deltaY: -12))
 check(near(dragDelta.x, 0) && near(dragDelta.y, 0), "Locked drag handle never moves lyrics")
 controls.setCollapsed(true)
 check(near(controls.panel.frame.width, 38), "Collapsed toolbar width")
+controls.follow(overlay: NSRect(x: 100, y: 100, width: 760, height: 112),
+                visibleFrames: [screen])
+check(near(controls.panel.frame.maxX, 850) && near(controls.panel.frame.maxY, 206),
+      "Collapsed button stays at the inside upper-right edge")
 toolbarButtons.first(where: { $0.accessibilityLabel() == "展开歌词工具条" })!.performClick(nil)
 check(tappedCollapse == 2, "Collapsed toolbar exposes an expand action")
 controls.setCollapsed(false)
@@ -211,6 +226,42 @@ lyricView.applyStyle(.defaultValue)
 lyricView.layout()
 check(lyricView.subviews[0].isHidden && lyricView.subviews[1].isHidden,
       "Default text background is fully transparent")
+
+let primaryLabel = lyricView.subviews[2] as! NSTextField
+let primaryChip = lyricView.subviews[0]
+let expandedInside = NSRect(x: 584, y: 68, width: 166, height: 38)
+lyricView.setControlsFrame(expandedInside)
+lyricView.show(primary: "合成歌词", secondary: "合成副句", fraction: 0, active: true)
+lyricView.layout()
+check(near(primaryLabel.frame.midX, lyricView.bounds.midX),
+      "Ordinary lines stay centered under the inside controls")
+check(near((lyricView.subviews[3] as! NSTextField).frame.midX, lyricView.bounds.midX),
+      "Secondary line stays centered independently of the toolbar")
+
+let mediumLine = String(repeating: "合成", count: 10)
+lyricView.applyStyle(OverlayStyle(backgroundRGB: "#123456", textRGB: "#F0E0D0", chipRGB: "#112233",
+                                  backgroundOpacity: 0.15, chipOpacity: 0.55))
+lyricView.show(primary: mediumLine, secondary: "", fraction: 0, active: true)
+lyricView.layout()
+check(primaryLabel.frame.midX < lyricView.bounds.midX,
+      "Only overlapping lyric lines move left of the expanded controls")
+check(primaryChip.frame.maxX <= expandedInside.minX - 8,
+      "Text background leaves an eight-point gap before the toolbar")
+check(primaryLabel.frame.maxX <= expandedInside.minX - 8,
+      "The text label itself cannot draw under the toolbar")
+
+lyricView.show(primary: String(repeating: "很长的合成歌词", count: 12),
+               secondary: "", fraction: 0, active: true)
+lyricView.layout()
+check(primaryChip.frame.maxX <= expandedInside.minX - 8 &&
+      primaryChip.frame.width <= primaryLabel.frame.width,
+      "Long truncated lines and their text backgrounds do not cover the toolbar")
+
+lyricView.show(primary: mediumLine, secondary: "", fraction: 0, active: true)
+lyricView.setControlsFrame(NSRect(x: 712, y: 68, width: 38, height: 38))
+lyricView.layout()
+check(near(primaryLabel.frame.midX, lyricView.bounds.midX),
+      "After collapsing the toolbar, an ordinary line returns to the center")
 
 let settings = StyleSettingsPanel(style: .defaultValue)
 let wells = settings.panel.contentView!.subviews.compactMap { $0 as? NSColorWell }
