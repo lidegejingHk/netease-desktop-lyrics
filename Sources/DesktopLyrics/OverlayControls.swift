@@ -2,7 +2,7 @@ import AppKit
 
 /// A mouse target separate from the click-through lyric window.
 final class OverlayControls: NSObject {
-    static let expandedSize = NSSize(width: 166, height: 38)
+    static let expandedSize = NSSize(width: ToolbarPlacement.expandedWidth, height: 38)
     static let collapsedSize = NSSize(width: 38, height: 38)
 
     let panel: NSPanel
