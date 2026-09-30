@@ -971,4 +971,32 @@ settings.panel.contentView!.subviews.compactMap { $0 as? NSButton }
     .first(where: { $0.title == "恢复默认" })!.performClick(nil)
 check(sentStyle == .defaultValue, "Reset restores all original colors and opacity")
 
+// The panel opens from the toolbar, so it must close the way a popover does
+// instead of only through its title-bar button.
+func keyEvent(_ characters: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> NSEvent {
+    NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers,
+                     timestamp: 0, windowNumber: settings.panel.windowNumber, context: nil,
+                     characters: characters, charactersIgnoringModifiers: characters,
+                     isARepeat: false, keyCode: keyCode)!
+}
+settings.show(near: toolbarRect, visibleFrames: [screen])
+check(settings.isVisible && settings.isWatchingOutsideClicks,
+      "Opening the style panel starts watching for outside clicks")
+settings.panel.keyDown(with: keyEvent("\u{1b}", keyCode: 53, modifiers: []))
+check(!settings.isVisible && !settings.isWatchingOutsideClicks,
+      "Escape closes the style panel and stops watching")
+settings.show(near: toolbarRect, visibleFrames: [screen])
+check(settings.panel.performKeyEquivalent(with: keyEvent("w", keyCode: 13, modifiers: .command)) &&
+      !settings.isVisible,
+      "Command-W closes the style panel")
+settings.show(near: toolbarRect, visibleFrames: [screen])
+check(!settings.dismissIfClickingOutside(settings.panel) &&
+      !settings.dismissIfClickingOutside(NSColorPanel.shared) && settings.isVisible,
+      "Clicking the panel or its colour panel keeps the style panel open")
+check(settings.dismissIfClickingOutside(controls.panel) && !settings.isVisible,
+      "Clicking the overlay outside the panel dismisses it")
+settings.show(near: toolbarRect, visibleFrames: [screen])
+check(settings.dismissIfClickingOutside(nil) && !settings.isVisible,
+      "A click in another app dismisses the style panel")
+
 print("Overlay appearance: all assertions passed")
