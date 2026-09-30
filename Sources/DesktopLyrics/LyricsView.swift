@@ -11,6 +11,7 @@ final class LyricsView: NSView {
     private let progress = NSView()
     private var style = OverlayStyle.defaultValue
     private var progressFraction: CGFloat = 0
+    private var controlsFrame: NSRect?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -50,6 +51,12 @@ final class LyricsView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
 
+    /// The independent controls panel's frame, converted to lyric-view coordinates.
+    func setControlsFrame(_ frame: NSRect) {
+        controlsFrame = frame
+        needsLayout = true
+    }
+
     func applyStyle(_ newStyle: OverlayStyle) {
         style = newStyle
         let background = OverlayStyle.nsColor(newStyle.backgroundRGB) ?? .black
@@ -70,6 +77,7 @@ final class LyricsView: NSView {
         let width = bounds.width
         accent.frame = NSRect(x: width / 2 - 18, y: bounds.height - 15, width: 36, height: 5)
         mainLabel.frame = NSRect(x: 32, y: 51, width: max(0, width - 64), height: 35)
+        avoidControlsForPrimaryLine()
         detailLabel.frame = NSRect(x: 36, y: 28, width: max(0, width - 72), height: 22)
         progressTrack.frame = NSRect(x: 32, y: 15, width: max(0, width - 64), height: 3)
         progress.frame = NSRect(x: 32, y: 15, width: max(0, width - 64) * progressFraction, height: 3)
@@ -77,13 +85,35 @@ final class LyricsView: NSView {
         layoutChip(detailChip, for: detailLabel, height: 24)
     }
 
+    private func avoidControlsForPrimaryLine() {
+        guard let controlsFrame, !controlsFrame.isEmpty,
+              !mainLabel.stringValue.isEmpty else { return }
+        let font = mainLabel.font ?? NSFont.systemFont(ofSize: 24)
+        let textWidth = (mainLabel.stringValue as NSString).size(withAttributes: [.font: font]).width
+        let occupiedWidth = min(mainLabel.frame.width,
+                                textWidth + (style.chipOpacity > 0 ? 24 : 0))
+        let occupied = NSRect(x: mainLabel.frame.midX - occupiedWidth / 2,
+                              y: mainLabel.frame.minY, width: occupiedWidth,
+                              height: mainLabel.frame.height)
+        let clearance: CGFloat = 8
+        guard occupied.intersects(controlsFrame.insetBy(dx: -clearance, dy: -4)) else { return }
+        let left = NSRect(x: mainLabel.frame.minX, y: mainLabel.frame.minY,
+                          width: max(0, controlsFrame.minX - clearance - mainLabel.frame.minX),
+                          height: mainLabel.frame.height)
+        let rightX = controlsFrame.maxX + clearance
+        let right = NSRect(x: rightX, y: mainLabel.frame.minY,
+                           width: max(0, mainLabel.frame.maxX - rightX),
+                           height: mainLabel.frame.height)
+        mainLabel.frame = left.width >= right.width ? left : right
+    }
+
     private func layoutChip(_ chip: NSView, for label: NSTextField, height: CGFloat) {
         chip.isHidden = style.chipOpacity == 0 || label.stringValue.isEmpty
         guard !chip.isHidden else { return }
         let font = label.font ?? NSFont.systemFont(ofSize: 15)
         let textWidth = (label.stringValue as NSString).size(withAttributes: [.font: font]).width
-        let chipWidth = min(textWidth, label.frame.width) + 24
-        chip.frame = NSRect(x: bounds.midX - chipWidth / 2,
+        let chipWidth = min(textWidth + 24, label.frame.width)
+        chip.frame = NSRect(x: label.frame.midX - chipWidth / 2,
                             y: label.frame.midY - height / 2,
                             width: chipWidth, height: height)
     }
