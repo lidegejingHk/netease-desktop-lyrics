@@ -697,24 +697,58 @@ rail.applyStyle(customStyle)
 check(near(rail.content.layer!.backgroundColor!.alpha, 0) &&
       rail.content.layer!.borderWidth == 0,
       "Waveform content draws no third card")
-rail.show(fraction: 0.5, active: true, playing: true)
+// The rail highlights the whole song: Rust reports position_ms and duration_ms for
+// the intro and for every line, and an unknown length must never fake progress.
+check(WholeSongProgress.fraction(position_ms: 25_000, duration_ms: 100_000) == 0.25 &&
+      WholeSongProgress.fraction(position_ms: 0, duration_ms: 215_000) == 0 &&
+      WholeSongProgress.fraction(position_ms: 100_000, duration_ms: 100_000) == 1 &&
+      WholeSongProgress.fraction(position_ms: 400_000, duration_ms: 100_000) == 1,
+      "Whole-song progress is position over duration, clamped to a full rail")
+check(WholeSongProgress.fraction(position_ms: 3_000, duration_ms: nil) == nil &&
+      WholeSongProgress.fraction(position_ms: 3_000, duration_ms: 0) == nil,
+      "An unknown or zero song length reports no progress instead of a guessed one")
+rail.show(fraction: WholeSongProgress.fraction(position_ms: 25_000, duration_ms: 100_000),
+          playing: true)
 rail.content.layout()
 let waveform = rail.content.waveform
 check(waveform.isAnimating &&
       waveform.layer!.sublayers!.count >= 80 &&
       waveform.frame.width >= railRect.width - 24,
       "A playing lyric animates a dense waveform along the entire lower region")
-check(near(rail.content.progressFraction, 0.5) &&
-      near(rail.content.progressWidth, rail.content.progressTrackWidth * 0.5),
-      "The lower visual indicator reflects current lyric progress")
-rail.show(fraction: 4, active: true, playing: false)
+check(rail.content.showsProgressTrack &&
+      near(rail.content.progressFraction, 0.25) &&
+      near(rail.content.progressWidth, rail.content.progressTrackWidth * 0.25),
+      "A quarter of the whole song highlights a quarter of the rail, not the current line")
+rail.show(fraction: WholeSongProgress.fraction(position_ms: 25_000, duration_ms: 100_000),
+          playing: false)
+rail.content.layout()
+check(!waveform.isAnimating && !waveform.isHidden &&
+      rail.content.showsProgressTrack &&
+      near(rail.content.progressFraction, 0.25) &&
+      near(rail.content.progressWidth, rail.content.progressTrackWidth * 0.25),
+      "Pausing freezes the bars and keeps the whole-song position")
+rail.show(fraction: WholeSongProgress.fraction(position_ms: 75_000, duration_ms: 100_000),
+          playing: true)
+rail.content.layout()
+check(waveform.isAnimating &&
+      near(rail.content.progressFraction, 0.75) &&
+      near(rail.content.progressWidth, rail.content.progressTrackWidth * 0.75),
+      "A seek moves the whole-song highlight in the same update")
+rail.show(fraction: WholeSongProgress.fraction(position_ms: 400_000, duration_ms: 100_000),
+          playing: false)
 rail.content.layout()
 check(!waveform.isAnimating && near(rail.content.progressFraction, 1) &&
-      !waveform.isHidden, "Paused playback freezes bars and clamps progress")
+      near(rail.content.progressWidth, rail.content.progressTrackWidth) &&
+      !waveform.isHidden, "A played-out song clamps to a full rail instead of overflowing")
+rail.show(fraction: -1, playing: true)
+check(near(rail.content.progressFraction, 0),
+      "A nonsense fraction stays bounded instead of drawing outside the rail")
 waveform.reduceMotionProvider = { true }
-rail.show(fraction: -1, active: true, playing: true)
-check(!waveform.isAnimating && near(rail.content.progressFraction, 0),
-      "Reduced Motion freezes the waveform and progress remains bounded")
+rail.show(fraction: WholeSongProgress.fraction(position_ms: 50_000, duration_ms: 100_000),
+          playing: true)
+check(!waveform.isAnimating && near(rail.content.progressFraction, 0.5) &&
+      rail.content.showsProgressTrack,
+      "Reduced Motion freezes the waveform and keeps whole-song progress")
 waveform.reduceMotionProvider = { false }
 waveform.refreshMotionPreference()
 check(waveform.isAnimating, "Waveform resumes after Reduced Motion is disabled")
@@ -724,9 +758,16 @@ check(!waveform.isAnimating && !rail.panel.isVisible,
 rail.setVisible(true)
 check(waveform.isAnimating && rail.panel.isVisible,
       "Showing the group restores the lower panel and playback animation")
-rail.show(fraction: 0.5, active: false, playing: false)
+rail.show(fraction: WholeSongProgress.fraction(position_ms: 3_000, duration_ms: nil),
+          playing: true)
 rail.content.layout()
-check(!waveform.isAnimating && !waveform.isHidden && near(rail.content.progressWidth, 0),
+check(!rail.content.showsProgressTrack && near(rail.content.progressWidth, 0) &&
+      near(rail.content.progressFraction, 0) && waveform.isAnimating && !waveform.isHidden,
+      "An unknown song length hides the progress track but still animates the waveform")
+rail.show(fraction: nil, playing: false)
+rail.content.layout()
+check(!waveform.isAnimating && !waveform.isHidden && !rail.content.showsProgressTrack &&
+      near(rail.content.progressWidth, 0),
       "No song leaves a static ambient rail without a running timer or active progress")
 check(!WaveformMotion.shouldAnimate(playing: false, reduceMotion: false) &&
       !WaveformMotion.shouldAnimate(playing: true, reduceMotion: true) &&

@@ -10,8 +10,7 @@ private struct LyricEvent: Decodable {
     let playing: Bool?
     let held_paused: Bool?
     let position_ms: UInt64?
-    let line_start_ms: UInt64?
-    let next_start_ms: UInt64?
+    let duration_ms: UInt64?
 }
 
 private final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
@@ -377,19 +376,13 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         case "loading": showStatus("正在获取当前歌曲歌词…")
         case "intro":
             content.show(primary: "♪ 即将开始", secondary: event.next ?? "")
-            rail.show(fraction: 0, active: true, playing: event.playing == true)
+            rail.show(fraction: wholeSongFraction(event), playing: event.playing == true)
         case "line":
             let subtitle = event.translation?.isEmpty == false
                 ? event.translation! : (event.next ?? "")
             let secondary = event.playing == false ? "Ⅱ  \(subtitle)" : subtitle
-            let elapsed = event.position_ms ?? 0
-            let start = event.line_start_ms ?? 0
-            let end = event.next_start_ms ?? start
-            let fraction: CGFloat = end > start
-                ? CGFloat(min(elapsed.saturatingSubtracting(start), end - start)) / CGFloat(end - start)
-                : 1
             content.show(primary: event.text ?? "", secondary: secondary)
-            rail.show(fraction: fraction, active: true, playing: event.playing == true)
+            rail.show(fraction: wholeSongFraction(event), playing: event.playing == true)
         case "unavailable": showStatus(message(for: event.reason))
         default: showStatus("未知的歌词引擎状态")
         }
@@ -411,9 +404,15 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         }
     }
 
+    /// Whole-song progress from the verified snapshot; the current line never resets it.
+    private func wholeSongFraction(_ event: LyricEvent) -> CGFloat? {
+        WholeSongProgress.fraction(position_ms: event.position_ms ?? 0,
+                                   duration_ms: event.duration_ms)
+    }
+
     private func showStatus(_ message: String) {
         content.show(primary: message, secondary: "")
-        rail?.show(fraction: 0, active: false, playing: false)
+        rail?.show(fraction: nil, playing: false)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -422,10 +421,6 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         transportTimer?.invalidate()
         if let bridge, bridge.isRunning { bridge.terminate() }
     }
-}
-
-private extension UInt64 {
-    func saturatingSubtracting(_ other: UInt64) -> UInt64 { self >= other ? self - other : 0 }
 }
 
 let app = NSApplication.shared

@@ -1,5 +1,15 @@
 import AppKit
 
+/// The lower rail highlights progress through the whole song, never one lyric line.
+enum WholeSongProgress {
+    /// `nil` when the verified playback snapshot carries no song length: no track is
+    /// drawn, and the waveform keeps animating without pretending the song finished.
+    static func fraction(position_ms: UInt64, duration_ms: UInt64?) -> CGFloat? {
+        guard let duration_ms, duration_ms > 0 else { return nil }
+        return CGFloat(min(position_ms, duration_ms)) / CGFloat(duration_ms)
+    }
+}
+
 /// A click-through, visually transparent lower panel containing a full-width progress waveform.
 final class WaveformRail {
     let panel: NSPanel
@@ -28,8 +38,8 @@ final class WaveformRail {
 
     func applyStyle(_ style: OverlayStyle) { content.applyStyle(style) }
 
-    func show(fraction: CGFloat, active: Bool, playing: Bool) {
-        content.show(fraction: fraction, active: active, playing: playing)
+    func show(fraction: CGFloat?, playing: Bool) {
+        content.show(fraction: fraction, playing: playing)
     }
 
     func setVisible(_ visible: Bool) {
@@ -47,6 +57,7 @@ final class WaveformRailView: NSView {
     private(set) var progressFraction: CGFloat = 0
     var progressWidth: CGFloat { progress.frame.width }
     var progressTrackWidth: CGFloat { progressTrack.frame.width }
+    var showsProgressTrack: Bool { !progressTrack.isHidden && !progress.isHidden }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -70,15 +81,18 @@ final class WaveformRailView: NSView {
         waveform.setTint(text)
     }
 
-    func show(fraction: CGFloat, active: Bool, playing: Bool) {
-        self.active = active
-        progressFraction = fraction.isFinite ? min(1, max(0, fraction)) : 0
+    /// `fraction` is the whole-song position; `nil` means the song length is unknown,
+    /// which hides the progress track without stopping the playback waveform.
+    func show(fraction: CGFloat?, playing: Bool) {
+        let resolved = fraction.map { $0.isFinite ? min(1, max(0, $0)) : 0 }
+        active = resolved != nil
+        progressFraction = resolved ?? 0
         progressTrack.isHidden = !active
         progress.isHidden = !active
         // Keep a quiet, static baseline while waiting for a song.
         waveform.isHidden = false
-        waveform.setProgress(active ? progressFraction : 0)
-        waveform.setPlaying(active && playing)
+        waveform.setProgress(progressFraction)
+        waveform.setPlaying(playing)
         needsLayout = true
     }
 

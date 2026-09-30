@@ -23,8 +23,10 @@
 
 **Files:** `src/lyrics_stream.rs`, `Sources/DesktopLyrics/main.swift`, `Sources/DesktopLyrics/WaveformRailView.swift`, `tests/OverlayAppearanceTests/main.swift`, `README.md`.
 
-- [ ] Rust tests 用有/无 `duration_ms` 的合成快照验证 intro/line JSON 字段和不暴露歌曲 ID；Swift 测试验证 1/4 时长为 25%，暂停冻结、跳转立即改变、缺失时长无伪进度但可动画。
-- [ ] Rust 事件携带 `position_ms`, `duration_ms`；Swift `WholeSongProgress` 对非零时长限幅计算 fraction，未知时长禁用进度轨但不禁用声浪动效；复跑 Rust/Swift 测试。
+- [x] Rust tests 用有/无 `duration_ms` 的合成快照验证 intro/line JSON 字段和不暴露歌曲 ID；Swift 测试验证 1/4 时长为 25%，暂停冻结、跳转立即改变、缺失时长无伪进度但可动画。
+- [x] Rust 事件携带 `position_ms`, `duration_ms`；Swift `WholeSongProgress` 对非零时长限幅计算 fraction，未知时长禁用进度轨但不禁用声浪动效；复跑 Rust/Swift 测试。
+
+实测备注：`duration_ms` 以 `Option<u64>` 序列化，未知时长输出 `null`（Swift 解出 nil）。`WaveformRail.show(fraction:playing:)` 改为可空 fraction：`nil` 隐藏进度轨与柱状高亮、但 `playing` 时声浪继续动；暂停只冻结动效，不改变整首歌位置。合成 `--stdin` 预览验证 intro 在 30s/120s 时点亮轨道的左 1/4，缺失时长的事件只显示歌词不画进度。
 
 ### Task 3: 两句收紧与左上歌名
 
