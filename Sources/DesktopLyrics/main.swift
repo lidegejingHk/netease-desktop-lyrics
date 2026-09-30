@@ -20,6 +20,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private var statusItem: NSStatusItem!
     private var toggleItem: NSMenuItem!
     private var lockItem: NSMenuItem!
+    private var retryTransportItem: NSMenuItem!
     private var controls: OverlayControls!
     private var settingsWindow: StyleSettingsPanel!
     private let styleStore = OverlayStyleStore()
@@ -135,6 +136,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
                 self.transportChecking = false
                 guard !self.transportBusy else { return }
                 let visibleState = self.failedTransport.visibleState(for: state)
+                self.retryTransportItem.isHidden = !self.failedTransport.hasFailure
                 self.transportAvailability = visibleState
                 self.controls.setPlaybackAvailability(previous: visibleState.previous,
                                                      toggle: visibleState.toggle,
@@ -159,6 +161,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
                 self.transportBusy = false
                 if !succeeded {
                     self.failedTransport.record(action, in: attemptedState)
+                    self.retryTransportItem.isHidden = false
                     NSSound.beep()
                 }
                 self.refreshTransport()
@@ -205,6 +208,11 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         let settings = NSMenuItem(title: "歌词样式…", action: #selector(toggleSettings(_:)), keyEquivalent: "")
         settings.target = self
         menu.addItem(settings)
+        retryTransportItem = NSMenuItem(title: "播放控制失败，重新检查…",
+                                        action: #selector(retryTransport(_:)), keyEquivalent: "")
+        retryTransportItem.target = self
+        retryTransportItem.isHidden = true
+        menu.addItem(retryTransportItem)
         menu.addItem(.separator())
         let permission = NSMenuItem(title: "打开辅助功能设置…", action: #selector(openAccessibility(_:)), keyEquivalent: "")
         permission.target = self
@@ -224,6 +232,14 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         if !showing { settingsWindow.close() }
         UserDefaults.standard.set(showing, forKey: "overlayShowing")
         toggleItem.title = showing ? "隐藏歌词" : "显示歌词"
+    }
+
+    @objc private func retryTransport(_ sender: NSMenuItem) {
+        failedTransport = PlaybackTransport.FailureLatch()
+        retryTransportItem.isHidden = true
+        transportAvailability = .unavailable
+        controls.setPlaybackAvailability(previous: false, toggle: .unavailable, next: false)
+        refreshTransport()
     }
 
     @objc private func toggleLock(_ sender: NSMenuItem) { changeLock() }
