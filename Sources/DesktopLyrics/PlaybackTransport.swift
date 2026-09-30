@@ -33,6 +33,15 @@ enum PlaybackTransport {
         let next: Bool
 
         static let unavailable = Self(previous: false, toggle: .unavailable, next: false)
+
+        func allows(_ action: Action) -> Bool {
+            switch action {
+            case .previous: return previous
+            case .play: return toggle == .play
+            case .pause: return toggle == .pause
+            case .next: return next
+            }
+        }
     }
 
     static func uniqueIndex(for action: Action, in items: [Item]) -> Int? {

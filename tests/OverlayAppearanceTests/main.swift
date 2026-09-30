@@ -31,6 +31,10 @@ check(PlaybackTransport.uniqueIndex(for: .previous, in: safeMenu) == 0 &&
 let pausedMenu = PlaybackTransport.availability(safeMenu)
 check(pausedMenu.previous && pausedMenu.toggle == .play && pausedMenu.next,
       "A single playable item exposes the play button")
+check(pausedMenu.allows(.previous) && pausedMenu.allows(.play) && pausedMenu.allows(.next) &&
+      !pausedMenu.allows(.pause) &&
+      !PlaybackTransport.Availability.unavailable.allows(.next),
+      "The controller only dispatches actions from the last verified menu state")
 let playingMenu = PlaybackTransport.availability([
     .init(role: "AXMenuItem", title: "暂停", enabled: true)
 ])
