@@ -35,6 +35,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private var transportChecking = false
     private var transportBusy = false
     private var transportAvailability = PlaybackTransport.Availability.unavailable
+    private var failedTransport = PlaybackTransport.FailureLatch()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -133,9 +134,11 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
                 guard let self, !self.shouldStop, request == self.transportRequest else { return }
                 self.transportChecking = false
                 guard !self.transportBusy else { return }
-                self.transportAvailability = state
-                self.controls.setPlaybackAvailability(previous: state.previous,
-                                                     toggle: state.toggle, next: state.next)
+                let visibleState = self.failedTransport.visibleState(for: state)
+                self.transportAvailability = visibleState
+                self.controls.setPlaybackAvailability(previous: visibleState.previous,
+                                                     toggle: visibleState.toggle,
+                                                     next: visibleState.next)
             }
         }
     }
@@ -143,6 +146,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private func runTransport(_ action: PlaybackTransport.Action) {
         guard launchMode == .app, !shouldStop, !transportBusy,
               transportAvailability.allows(action) else { return }
+        let attemptedState = transportAvailability
         transportBusy = true
         transportChecking = false
         transportRequest &+= 1 // invalidate slower in-flight availability reads
@@ -150,10 +154,13 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         controls.setPlaybackAvailability(previous: false, toggle: .unavailable, next: false)
         transportQueue.async { [weak self] in
             let succeeded = PlaybackTransport.perform(action)
-            DispatchQueue.main.async { [weak self] in
+            DispatchQueue.main.async { [weak self, attemptedState] in
                 guard let self, !self.shouldStop else { return }
                 self.transportBusy = false
-                if !succeeded { NSSound.beep() }
+                if !succeeded {
+                    self.failedTransport.record(action, in: attemptedState)
+                    NSSound.beep()
+                }
                 self.refreshTransport()
             }
         }
