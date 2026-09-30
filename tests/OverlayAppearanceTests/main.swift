@@ -460,40 +460,112 @@ check(lyricView.subviews[0].isHidden && lyricView.subviews[1].isHidden,
       "Default text background is fully transparent")
 
 let primaryLabel = lyricView.subviews[2] as! NSTextField
+let detailLabel = lyricView.subviews[3] as! NSTextField
 let primaryChip = lyricView.subviews[0]
-let expandedInside = NSRect(x: 584, y: 68, width: 166, height: 38)
+let detailChip = lyricView.subviews[1]
+let expandedInside = NSRect(x: 584, y: 48, width: 166, height: 80)
 lyricView.setControlsFrame(expandedInside)
 lyricView.show(primary: "合成歌词", secondary: "合成副句", fraction: 0, active: true)
 lyricView.layout()
 check(near(primaryLabel.frame.midX, lyricView.bounds.midX),
-      "Ordinary lines stay centered under the inside controls")
-check(near((lyricView.subviews[3] as! NSTextField).frame.midX, lyricView.bounds.midX),
-      "Secondary line stays centered independently of the toolbar")
+      "Short primary lyrics remain centered with the rail open")
+check(near(detailLabel.frame.midX, lyricView.bounds.midX),
+      "Short next or translated lyrics remain centered independently")
 
 let mediumLine = String(repeating: "合成", count: 10)
 lyricView.applyStyle(OverlayStyle(backgroundRGB: "#123456", textRGB: "#F0E0D0", chipRGB: "#112233",
                                   backgroundOpacity: 0.15, chipOpacity: 0.55))
-lyricView.show(primary: mediumLine, secondary: "", fraction: 0, active: true)
+lyricView.show(primary: mediumLine, secondary: String(repeating: "合成", count: 19),
+               fraction: 0, active: true)
 lyricView.layout()
-check(primaryLabel.frame.midX < lyricView.bounds.midX,
-      "Only overlapping lyric lines move left of the expanded controls")
-check(primaryChip.frame.maxX <= expandedInside.minX - 8,
-      "Text background leaves an eight-point gap before the toolbar")
-check(primaryLabel.frame.maxX <= expandedInside.minX - 8,
-      "The text label itself cannot draw under the toolbar")
+check(primaryLabel.frame.midX < lyricView.bounds.midX &&
+      detailLabel.frame.midX < lyricView.bounds.midX,
+      "Both lyric rows use their dedicated left-side area")
+check(primaryChip.frame.maxX <= expandedInside.minX - 20 &&
+      detailChip.frame.maxX <= expandedInside.minX - 20,
+      "Both text backgrounds leave clearance before the controls")
+check(primaryLabel.frame.maxX <= expandedInside.minX - 20 &&
+      detailLabel.frame.maxX <= expandedInside.minX - 20,
+      "Neither label can draw beneath the toolbar")
 
 lyricView.show(primary: String(repeating: "很长的合成歌词", count: 12),
                secondary: "", fraction: 0, active: true)
 lyricView.layout()
-check(primaryChip.frame.maxX <= expandedInside.minX - 8 &&
+check(primaryChip.frame.maxX <= expandedInside.minX - 20 &&
       primaryChip.frame.width <= primaryLabel.frame.width,
-      "Long truncated lines and their text backgrounds do not cover the toolbar")
+      "Long wrapped text and its background do not cover the toolbar")
 
 lyricView.show(primary: mediumLine, secondary: "", fraction: 0, active: true)
-lyricView.setControlsFrame(NSRect(x: 712, y: 68, width: 38, height: 38))
+lyricView.setControlsFrame(NSRect(x: 712, y: 48, width: 38, height: 38))
 lyricView.layout()
 check(near(primaryLabel.frame.midX, lyricView.bounds.midX),
       "After collapsing the toolbar, an ordinary line returns to the center")
+
+let twoLineView = LyricsView(frame: NSRect(x: 0, y: 0, width: 860, height: 176))
+let rightRail = NSRect(x: 684, y: 48, width: 166, height: 80)
+twoLineView.setControlsFrame(rightRail)
+twoLineView.show(primary: String(repeating: "合成歌词", count: 16),
+                 secondary: String(repeating: "合成副句", count: 14), fraction: 0.3, active: true)
+twoLineView.layout()
+let twoLinePrimary = twoLineView.subviews[2] as! NSTextField
+let twoLineDetail = twoLineView.subviews[3] as! NSTextField
+check(twoLinePrimary.maximumNumberOfLines == 2 && twoLineDetail.maximumNumberOfLines == 2,
+      "Both lyric lines permit up to two visual rows")
+check(twoLinePrimary.stringValue.contains("\n") && twoLinePrimary.font!.pointSize < 24 &&
+      twoLinePrimary.font!.pointSize >= 16,
+      "A long primary line wraps before shrinking below 16 pt")
+check(twoLineDetail.stringValue.contains("\n") &&
+      twoLineDetail.font!.pointSize >= 12,
+      "The next/translated line also wraps in its own bounded area")
+check(twoLinePrimary.frame.maxX <= rightRail.minX - 20 &&
+      twoLineDetail.frame.maxX <= rightRail.minX - 20,
+      "Neither text line may enter the transport/control rail")
+check(twoLinePrimary.frame.minY > twoLineDetail.frame.maxY &&
+      twoLineDetail.frame.minY > 18,
+      "Two-line lyrics, next line, and progress each have their own vertical band")
+twoLineView.show(primary: String(repeating: "特别长的合成歌词", count: 200),
+                 secondary: "", fraction: 0.5, active: true)
+twoLineView.layout()
+check(near(twoLinePrimary.font!.pointSize, 16) &&
+      twoLinePrimary.stringValue.hasSuffix("…") &&
+      twoLinePrimary.stringValue.components(separatedBy: "\n").count == 2,
+      "Extreme lyrics are limited to two rows at minimum size and end with an ellipsis")
+check(twoLinePrimary.accessibilityLabel() == String(repeating: "特别长的合成歌词", count: 200),
+      "Accessibility retains full lyric content even when visually abbreviated")
+twoLineView.show(primary: "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}" + String(repeating: " 合成", count: 180),
+                 secondary: "", fraction: 0.4, active: true)
+twoLineView.layout()
+check(twoLinePrimary.stringValue.first == "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}" &&
+      twoLinePrimary.stringValue.hasSuffix("…"),
+      "Two-row truncation never cuts through a composed Unicode character")
+twoLineView.show(primary: String(repeating: "合成", count: 140),
+                 secondary: String(repeating: "翻译", count: 140), fraction: 0.5, active: true)
+twoLineView.layout()
+check(twoLineDetail.stringValue.hasSuffix("…") &&
+      near(twoLineDetail.font!.pointSize, 12) &&
+      twoLineDetail.accessibilityLabel() == String(repeating: "翻译", count: 140),
+      "Extreme secondary text also truncates at its own font minimum with complete accessibility text")
+let waveform = twoLineView.subviews.compactMap { $0 as? WaveformView }.first!
+twoLineView.show(primary: "合成", secondary: "", fraction: 0, active: true, playing: true)
+check(waveform.isAnimating, "Playback starts the ambient visual waveform")
+twoLineView.show(primary: "合成", secondary: "", fraction: 0, active: true, playing: false)
+check(!waveform.isAnimating && !waveform.isHidden, "Paused playback leaves static bars visible")
+waveform.reduceMotionProvider = { true }
+twoLineView.show(primary: "合成", secondary: "", fraction: 0, active: true, playing: true)
+check(!waveform.isAnimating, "The system's Reduced Motion preference disables the waveform timer")
+waveform.reduceMotionProvider = { false }
+waveform.refreshMotionPreference()
+check(waveform.isAnimating, "The waveform resumes when Reduced Motion is disabled")
+twoLineView.setOverlayVisible(false)
+check(!waveform.isAnimating, "Hiding the lyrics stops the waveform timer")
+twoLineView.setOverlayVisible(true)
+check(waveform.isAnimating, "Showing playing lyrics restarts the waveform")
+twoLineView.show(primary: "等待", secondary: "", fraction: 0, active: false)
+check(!waveform.isAnimating && waveform.isHidden, "Unavailable playback hides and stops the waveform")
+check(!WaveformMotion.shouldAnimate(playing: false, reduceMotion: false) &&
+      !WaveformMotion.shouldAnimate(playing: true, reduceMotion: true) &&
+      WaveformMotion.shouldAnimate(playing: true, reduceMotion: false),
+      "Waveform stops when paused or when Reduced Motion is enabled")
 
 let settings = StyleSettingsPanel(style: .defaultValue)
 let wells = settings.panel.contentView!.subviews.compactMap { $0 as? NSColorWell }

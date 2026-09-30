@@ -71,6 +71,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         panel.delegate = self
         content = LyricsView(frame: frame)
         content.applyStyle(styleStore.load())
+        content.setOverlayVisible(showing)
         panel.contentView = content
         if let point = UserDefaults.standard.dictionary(forKey: "overlayOrigin"),
            let x = point["x"] as? Double, let y = point["y"] as? Double,
@@ -209,6 +210,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         showing.toggle()
         if showing { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
         controls.setVisible(showing)
+        content.setOverlayVisible(showing)
         if !showing { settingsWindow.close() }
         UserDefaults.standard.set(showing, forKey: "overlayShowing")
         toggleItem.title = showing ? "隐藏歌词" : "显示歌词"
@@ -306,7 +308,8 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         switch event.kind {
         case "loading": showStatus("正在获取当前歌曲歌词…")
         case "intro":
-            content.show(primary: "♪ 即将开始", secondary: event.next ?? "", fraction: 0, active: true)
+            content.show(primary: "♪ 即将开始", secondary: event.next ?? "", fraction: 0,
+                         active: true, playing: event.playing == true)
         case "line":
             let subtitle = event.translation?.isEmpty == false
                 ? event.translation! : (event.next ?? "")
@@ -317,7 +320,8 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
             let fraction: CGFloat = end > start
                 ? CGFloat(min(elapsed.saturatingSubtracting(start), end - start)) / CGFloat(end - start)
                 : 1
-            content.show(primary: event.text ?? "", secondary: secondary, fraction: fraction, active: true)
+            content.show(primary: event.text ?? "", secondary: secondary, fraction: fraction,
+                         active: true, playing: event.playing == true)
         case "unavailable": showStatus(message(for: event.reason))
         default: showStatus("未知的歌词引擎状态")
         }
