@@ -30,8 +30,15 @@
 
 **Files:** `Sources/DesktopLyrics/StyleSettingsPanel.swift`, `tests/OverlayAppearanceTests/main.swift`, `README.md`.
 
-- [ ] 测试断言 `styleMask` 不含 `.closable`、`isMovable` 为 false、失焦（非颜色面板取得 key）时关闭、颜色面板取得 key 时不关；先红灯。
-- [ ] 去掉 `.closable`、设 `isMovable = false`，实现 `windowDidResignKey` 关闭及其可测的判定函数；更新 README；复跑测试。
+- [x] 测试断言 `styleMask` 不含 `.closable`、`isMovable` 为 false、失焦（非颜色面板取得 key）时关闭、颜色面板取得 key 时不关；先红灯。
+- [x] 去掉 `.closable`、设 `isMovable = false`，实现 `windowDidResignKey` 关闭及其可测的判定函数；更新 README；复跑测试。
+
+### Task 2c: 取色面板不可拖动、无标题栏按钮（未做）
+
+**Files:** `Sources/DesktopLyrics/StyleSettingsPanel.swift`, `tests/OverlayAppearanceTests/main.swift`, `README.md`.
+
+- [ ] 测试断言 `NSColorPanel.shared` 的 `isMovable` 为 false，且 close/miniaturize/zoom 三个标准按钮都已隐藏；先红灯。
+- [ ] 在配置共享颜色面板处（`showsAlpha` 附近，`show()` 时再兜一次）设置 `isMovable = false` 并隐藏三个按钮；更新 README；复跑 Swift 测试。
 
 ### Task 3: 颜色面板定位
 
@@ -43,6 +50,8 @@
 实测备注：真实预览包日志确认 `mouseDown` 时先算出 anchor（如 `(1064, 368.5)`）再 `super`，颜色面板随后在锚点显示（`visible=true frame=(1064, 368, 250, 397)`，正好贴在样式面板左侧、与被点色块对齐）；点样式面板内与颜色面板内都不会关闭，点其他 App 或在浮层上点击会关闭，Esc 与 ⌘W 各关闭一次。
 
 ### Task 4: 验收与本地提交
+
+待办：Task 2c 完成后需重新跑一遍 Task 4 的验证；正式 App 也还没用这批改动重建（当前 `dist/` 仍是「可见性/进度/歌名」那版之后、删把手之前的状态），等用户确认再重建以免再次失效辅助功能授权。
 
 实测备注：预览包已用 `--stdin` 合成事件 + 真实 `CGEvent` 点击/按键逐项验证并把日志与截图留档；产物已移到废纸篓。
 

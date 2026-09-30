@@ -79,12 +79,15 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
 
     init(style: OverlayStyle) {
         self.style = style
+        // Titled but not closable: the panel is dismissed by losing focus, Esc,
+        // Command-W or a click outside, not by a title-bar button.
         panel = StyleSettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 310),
-                                    styleMask: [.titled, .closable, .utilityWindow],
+                                    styleMask: [.titled, .utilityWindow],
                                     backing: .buffered, defer: false)
         super.init()
         panel.onDismiss = { [weak self] in self?.close() }
         panel.title = "歌词样式"
+        panel.isMovable = false
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
@@ -232,6 +235,19 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         style = .defaultValue
         refreshControls()
         onStyleChange?(style)
+    }
+
+    /// Losing focus dismisses the panel, unless the shared colour panel took key:
+    /// that is the colour-picking flow the panel itself started.
+    func shouldDismissAfterLosingKey(colourPanelIsKey: Bool) -> Bool {
+        panel.isVisible && !colourPanelIsKey
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        guard shouldDismissAfterLosingKey(colourPanelIsKey: NSColorPanel.shared.isKeyWindow) else {
+            return
+        }
+        close()
     }
 
     func windowWillClose(_ notification: Notification) {

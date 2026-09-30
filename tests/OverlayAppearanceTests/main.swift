@@ -964,6 +964,21 @@ check(anchor != nil &&
       NSScreen.screens.contains(where: { $0.visibleFrame.contains(anchor!) }),
       "Every swatch anchors the shared colour panel beside the settings panel")
 
+// A lightweight style panel: no title-bar button, no dragging, and it goes away
+// as soon as the user moves on.
+check(!settings.panel.styleMask.contains(.closable) &&
+      (settings.panel.standardWindowButton(.closeButton)?.isHidden ?? true) &&
+      !settings.panel.isMovable,
+      "The style panel has no close button and cannot be dragged around")
+settings.show(near: toolbarRect, visibleFrames: [screen])
+check(settings.shouldDismissAfterLosingKey(colourPanelIsKey: false) &&
+      !settings.shouldDismissAfterLosingKey(colourPanelIsKey: true),
+      "Losing focus to another window dismisses the panel but picking a colour does not")
+settings.windowDidResignKey(Notification(name: NSWindow.didResignKeyNotification,
+                                         object: settings.panel))
+check(!settings.isVisible,
+      "The style panel closes as soon as it loses focus")
+
 // The panel opens from the toolbar, so it must close the way a popover does
 // instead of only through its title-bar button.
 func keyEvent(_ characters: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> NSEvent {
