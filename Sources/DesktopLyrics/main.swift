@@ -45,11 +45,9 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
                                                name: NSApplication.didChangeScreenParametersNotification,
                                                object: nil)
         showStatus("正在等待网易云音乐…")
-        if launchMode == .app {
-            refreshTransport()
-            transportTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-                self?.refreshTransport()
-            }
+        refreshTransport()
+        transportTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            self?.refreshTransport()
         }
         if launchMode == .stdin {
             observe(FileHandle.standardInput)
@@ -125,7 +123,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     }
 
     private func refreshTransport() {
-        guard launchMode == .app, !shouldStop, !transportBusy, !transportChecking else { return }
+        guard !shouldStop, !transportBusy, !transportChecking else { return }
         transportChecking = true
         transportRequest &+= 1
         let request = transportRequest
