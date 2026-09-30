@@ -42,6 +42,8 @@
 
 **Files:** `README.md`, above implementation/tests/docs.
 
-- [ ] `./scripts/test-swift.sh`、`xcrun swiftc -target arm64-apple-macos13.0 -warnings-as-errors -framework AppKit -framework Foundation -framework ApplicationServices -typecheck Sources/DesktopLyrics/*.swift`、`cargo test`、`cargo fmt --all --check`、`cargo clippy --all-targets -- -D warnings`、`git diff --check`。
-- [ ] 构建独立 `dist-preview` App，用持续合成 `--stdin` 事件截含标题、长短句、等待、拖动后顺序的完整截图，确认内容不被盖住；停预览。自审协议隐私、歌名竞态和布局。
-- [ ] 停正式 App、备份 `dist/网易云桌面歌词.app` 到 `dist-backup/`；重建正式包、签名校验并打开。代码每阶段完成后本地 commit，最后工作区干净，不推送。
+- [x] `./scripts/test-swift.sh`、`xcrun swiftc -target arm64-apple-macos13.0 -warnings-as-errors -framework AppKit -framework Foundation -framework ApplicationServices -typecheck Sources/DesktopLyrics/*.swift`、`cargo test`、`cargo fmt --all --check`、`cargo clippy --all-targets -- -D warnings`、`git diff --check`。
+- [x] 构建独立 `dist-preview` App，用持续合成 `--stdin` 事件截含标题、长短句、等待、拖动后顺序的完整截图，确认内容不被盖住；停预览。自审协议隐私、歌名竞态和布局。
+- [x] 停正式 App、备份 `dist/网易云桌面歌词.app` 到 `dist-backup/`；重建正式包、签名校验并打开。代码每阶段完成后本地 commit，最后工作区干净，不推送。
+
+实测备注：`./scripts/test-swift.sh` 绿灯（含新的窗口顺序、整首歌进度、标题与两行间距断言），macOS 13 严格 typecheck、`cargo test`（69 项）、`cargo fmt --all --check`、`cargo clippy --all-targets -- -D warnings` 与 `git diff --check` 全部通过。独立预览包用真实 `CGEvent` 拖动（含从副显示器拖回主显示器）后截图：标题、两行歌词、播放三键与声浪都在背景之前，等待态清空标题且不画进度。正式 App 已备份到 `dist-backup/网易云桌面歌词-20260930-212706-before-visibility-progress-title.app` 并本地重建、`codesign --verify --deep --strict` 通过、已打开；**重签后辅助功能授权失效，浮层提示手动重新授权，由用户自行在系统设置中重新添加。** 未推送。
