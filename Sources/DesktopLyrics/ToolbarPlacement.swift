@@ -2,6 +2,10 @@ import AppKit
 
 /// Toolbar position in global AppKit screen coordinates. Pure so it can be tested without windows.
 enum ToolbarPlacement {
+    // Reserve enough room for expanded controls even when the toolbar is collapsed;
+    // otherwise the right edge jumps when the overlay is partly off-screen.
+    static let expandedWidth: CGFloat = 166
+
     static func origin(overlay: NSRect, size: NSSize, visibleFrames: [NSRect]) -> NSPoint {
         let horizontalInset: CGFloat = 8
         let verticalInset: CGFloat = 6
@@ -19,18 +23,18 @@ enum ToolbarPlacement {
         }) else {
             return desired
         }
+        // Use the expanded width for the screen-safe anchor in both states.
+        // A narrow visible sliver cannot contain the expanded toolbar; in that
+        // case keep both states together on-screen rather than jumping on toggle.
+        let safeRight = screen.width >= expandedWidth + horizontalInset * 2
+            ? min(max(overlay.maxX - 10, screen.minX + expandedWidth + horizontalInset),
+                  screen.maxX - horizontalInset)
+            : screen.maxX
         let visibleOverlay = screen.intersection(overlay)
-        // Prefer the visible part of the lyric window, but fall back to the display
-        // when only a narrow sliver of the window is currently on-screen.
-        let horizontal = !visibleOverlay.isNull
-            && visibleOverlay.width >= size.width + horizontalInset * 2
-            ? visibleOverlay : screen
         let vertical = !visibleOverlay.isNull
             && visibleOverlay.height >= size.height + verticalInset * 2
             ? visibleOverlay : screen
-        let x = min(max(desired.x, horizontal.minX + horizontalInset),
-                    max(horizontal.minX + horizontalInset,
-                        horizontal.maxX - size.width - horizontalInset))
+        let x = max(screen.minX, safeRight - size.width)
         let y = min(max(desired.y, vertical.minY + verticalInset),
                     max(vertical.minY + verticalInset,
                         vertical.maxY - size.height - verticalInset))

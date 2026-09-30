@@ -126,6 +126,24 @@ let collapsedPoint = ToolbarPlacement.origin(
 )
 check(near(collapsedPoint.x + OverlayControls.collapsedSize.width, above.x + size.width),
       "Collapsed toolbar keeps the same right edge")
+let thinSliver = NSRect(x: -700, y: 100, width: 760, height: 112)
+let thinExpanded = ToolbarPlacement.origin(overlay: thinSliver, size: size, visibleFrames: [screen])
+let thinCollapsed = ToolbarPlacement.origin(overlay: thinSliver,
+                                             size: OverlayControls.collapsedSize,
+                                             visibleFrames: [screen])
+check(near(thinExpanded.x + size.width,
+           thinCollapsed.x + OverlayControls.collapsedSize.width),
+      "Collapsed controls preserve the same right edge even if lyrics have only a thin visible sliver")
+let edgeScreens = [screen, secondScreen]
+let edgeOverlay = NSRect(x: 950, y: 100, width: 760, height: 112)
+let edgeExpanded = ToolbarPlacement.origin(overlay: edgeOverlay, size: size,
+                                            visibleFrames: edgeScreens)
+let edgeCollapsed = ToolbarPlacement.origin(overlay: edgeOverlay,
+                                             size: OverlayControls.collapsedSize,
+                                             visibleFrames: edgeScreens)
+check(near(edgeExpanded.x + size.width,
+           edgeCollapsed.x + OverlayControls.collapsedSize.width),
+      "Collapsed controls preserve the right edge when lyrics straddle displays")
 
 let _ = NSApplication.shared
 let controls = OverlayControls()
