@@ -66,6 +66,8 @@ enum PlaybackTransport {
         private(set) var failed: (action: Action, state: Availability)?
         private var interrupted = false
 
+        var hasFailure: Bool { failed != nil }
+
         mutating func record(_ action: Action, in state: Availability) {
             failed = (action, state)
             interrupted = false
