@@ -1,8 +1,35 @@
 import AppKit
 
+/// A utility panel that closes like a popover: Esc, Command-W and any click outside it.
+final class StyleSettingsWindow: NSPanel {
+    var onDismiss: (() -> Void)?
+
+    override func cancelOperation(_ sender: Any?) { onDismiss?() }
+
+    override func keyDown(with event: NSEvent) {
+        guard !handleDismissKey(event) else { return }
+        super.keyDown(with: event)
+    }
+
+    /// An accessory app has no menu bar, so Command-W arrives as a plain key equivalent.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard !handleDismissKey(event) else { return true }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    private func handleDismissKey(_ event: NSEvent) -> Bool {
+        let escape = event.keyCode == 53
+        let commandW = event.charactersIgnoringModifiers == "w"
+            && event.modifierFlags.contains(.command)
+        guard escape || commandW else { return false }
+        onDismiss?()
+        return true
+    }
+}
+
 /// Native controls for appearance only; no playback state enters this window.
 final class StyleSettingsPanel: NSObject, NSWindowDelegate {
-    let panel: NSPanel
+    let panel: StyleSettingsWindow
     var onStyleChange: ((OverlayStyle) -> Void)?
     var onClose: (() -> Void)?
 
@@ -14,13 +41,18 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
     private let backgroundPercent = NSTextField(labelWithString: "91%")
     private let chipPercent = NSTextField(labelWithString: "0%")
     private var style: OverlayStyle
+    private var outsideClickMonitors: [Any] = []
+
+    /// True while the panel observes clicks that should dismiss it.
+    var isWatchingOutsideClicks: Bool { !outsideClickMonitors.isEmpty }
 
     init(style: OverlayStyle) {
         self.style = style
-        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 380, height: 310),
-                        styleMask: [.titled, .closable, .utilityWindow],
-                        backing: .buffered, defer: false)
+        panel = StyleSettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 310),
+                                    styleMask: [.titled, .closable, .utilityWindow],
+                                    backing: .buffered, defer: false)
         super.init()
+        panel.onDismiss = { [weak self] in self?.close() }
         panel.title = "歌词样式"
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -93,10 +125,42 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        installOutsideClickMonitors()
     }
 
     func close() { panel.close() }
     var isVisible: Bool { panel.isVisible }
+
+    /// A click anywhere but this panel and the colour panel it opened dismisses it.
+    @discardableResult
+    func dismissIfClickingOutside(_ window: NSWindow?) -> Bool {
+        guard panel.isVisible else { return false }
+        if window === panel || window === NSColorPanel.shared { return false }
+        close()
+        return true
+    }
+
+    private func installOutsideClickMonitors() {
+        guard outsideClickMonitors.isEmpty else { return }
+        let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        // Local events cover our own overlay windows; global ones cover other apps.
+        if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] event in
+            self?.dismissIfClickingOutside(event.window)
+            return event
+        }) {
+            outsideClickMonitors.append(local)
+        }
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] _ in
+            self?.dismissIfClickingOutside(nil)
+        }) {
+            outsideClickMonitors.append(global)
+        }
+    }
+
+    private func removeOutsideClickMonitors() {
+        for monitor in outsideClickMonitors { NSEvent.removeMonitor(monitor) }
+        outsideClickMonitors.removeAll()
+    }
 
     private func refreshControls() {
         backgroundWell.color = OverlayStyle.nsColor(style.backgroundRGB) ?? .black
@@ -129,6 +193,7 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        removeOutsideClickMonitors()
         NSColorPanel.shared.orderOut(nil)
         onClose?()
     }

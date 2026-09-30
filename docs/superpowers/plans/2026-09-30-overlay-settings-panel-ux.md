@@ -14,15 +14,17 @@
 
 **Files:** `Sources/DesktopLyrics/OverlayControls.swift`, `tests/OverlayAppearanceTests/main.swift`.
 
-- [ ] 测试断言把手子视图是图片视图、图像非空、tint 等于文字颜色、锁定后透明度低于 0.5 且仍可点击穿透；先红灯。
-- [ ] 换成 `arrow.up.and.down.and.arrow.left.and.right`，保留 42%/94% 透明度与穿透；复跑 Swift 测试。
+- [x] 测试断言把手子视图是图片视图、图像非空、tint 等于文字颜色、锁定后透明度低于 0.5 且仍可点击穿透；先红灯。
+- [x] 换成 `arrow.up.and.down.and.arrow.left.and.right`，保留 42%/94% 透明度与穿透；复跑 Swift 测试。
 
 ### Task 2: 样式面板的关闭方式
 
 **Files:** `Sources/DesktopLyrics/StyleSettingsPanel.swift`, `tests/OverlayAppearanceTests/main.swift`.
 
-- [ ] 测试 Esc、⌘W、面板外点击都关闭面板，点面板本身与共享颜色面板不关闭；先红灯。
-- [ ] 用 `NSPanel` 子类处理 Esc／⌘W，本地与全局鼠标监视器处理外部点击（面板关闭时移除监视器）；复跑 Swift 测试。
+- [x] 测试 Esc、⌘W、面板外点击都关闭面板，点面板本身与共享颜色面板不关闭；先红灯。
+- [x] 用 `NSPanel` 子类处理 Esc／⌘W，本地与全局鼠标监视器处理外部点击（面板关闭时移除监视器）；复跑 Swift 测试。
+
+实测备注：`StyleSettingsWindow.handleDismissKey` 同时处理 Esc（keyCode 53）与 ⌘W，`cancelOperation` 兜住第一响应者吃掉 Esc 的情况；外部点击用本地+全局鼠标监视器，`isWatchingOutsideClicks` 让测试能断言监视器随关闭释放。
 
 ### Task 3: 颜色面板定位
 
