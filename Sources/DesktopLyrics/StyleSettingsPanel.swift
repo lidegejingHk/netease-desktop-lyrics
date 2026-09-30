@@ -27,15 +27,46 @@ final class StyleSettingsWindow: NSPanel {
     }
 }
 
+/// A swatch that places the shared colour panel before AppKit shows it, so it
+/// never appears at whatever position the panel was last left in.
+final class AnchoredColorWell: NSColorWell {
+    var colorPanelAnchor: (() -> NSPoint)?
+
+    override func mouseDown(with event: NSEvent) {
+        if let anchor = colorPanelAnchor?() { NSColorPanel.shared.setFrameOrigin(anchor) }
+        super.mouseDown(with: event)
+    }
+}
+
 /// Native controls for appearance only; no playback state enters this window.
 final class StyleSettingsPanel: NSObject, NSWindowDelegate {
+    static let colorPanelGap: CGFloat = 10
+    private static let colorPanelMargin: CGFloat = 8
+
+    /// The colour panel sits beside the settings panel, centred on the swatch that
+    /// opened it, and is clamped into the screen that holds that swatch.
+    static func colorPanelOrigin(well: NSRect, panel: NSRect, colorPanel: NSSize,
+                                 visibleFrames: [NSRect]) -> NSPoint {
+        let screen = visibleFrames.first { $0.intersects(well) }
+            ?? visibleFrames.first ?? NSRect(x: 0, y: 0, width: colorPanel.width, height: colorPanel.height)
+        let left = panel.minX - colorPanelGap - colorPanel.width
+        let right = panel.maxX + colorPanelGap
+        let x = left >= screen.minX + colorPanelMargin ? left : right
+        let y = well.midY - colorPanel.height / 2
+        return NSPoint(
+            x: min(max(x, screen.minX + colorPanelMargin),
+                   screen.maxX - colorPanel.width - colorPanelMargin),
+            y: min(max(y, screen.minY + colorPanelMargin),
+                   screen.maxY - colorPanel.height - colorPanelMargin))
+    }
+
     let panel: StyleSettingsWindow
     var onStyleChange: ((OverlayStyle) -> Void)?
     var onClose: (() -> Void)?
 
-    private let backgroundWell = NSColorWell(frame: .zero)
-    private let textWell = NSColorWell(frame: .zero)
-    private let chipWell = NSColorWell(frame: .zero)
+    private let backgroundWell = AnchoredColorWell(frame: .zero)
+    private let textWell = AnchoredColorWell(frame: .zero)
+    private let chipWell = AnchoredColorWell(frame: .zero)
     private let backgroundSlider = NSSlider(frame: .zero)
     private let chipSlider = NSSlider(frame: .zero)
     private let backgroundPercent = NSTextField(labelWithString: "91%")
@@ -92,6 +123,10 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         well.target = self
         well.action = #selector(colorChanged(_:))
         well.setAccessibilityLabel(label)
+        (well as? AnchoredColorWell)?.colorPanelAnchor = { [weak self, weak well] in
+            guard let self, let well else { return NSColorPanel.shared.frame.origin }
+            return self.colorPanelOrigin(for: well)
+        }
         root.addSubview(well)
     }
 
@@ -130,6 +165,13 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
 
     func close() { panel.close() }
     var isVisible: Bool { panel.isVisible }
+
+    private func colorPanelOrigin(for well: NSView) -> NSPoint {
+        Self.colorPanelOrigin(well: panel.convertToScreen(well.convert(well.bounds, to: nil)),
+                              panel: panel.frame,
+                              colorPanel: NSColorPanel.shared.frame.size,
+                              visibleFrames: NSScreen.screens.map(\.visibleFrame))
+    }
 
     /// A click anywhere but this panel and the colour panel it opened dismisses it.
     @discardableResult
