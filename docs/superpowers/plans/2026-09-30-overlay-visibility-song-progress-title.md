@@ -32,9 +32,11 @@
 
 **Files:** `Sources/DesktopLyrics/LyricsView.swift`, `Sources/DesktopLyrics/OverlayFrameView.swift`, `src/lyrics.rs`, `src/lyrics_stream.rs`, `src/main.rs`, `Sources/DesktopLyrics/main.swift`, `tests/OverlayAppearanceTests/main.swift`, `README.md`.
 
-- [ ] Swift 测试含常见短句、两行双句和极端省略，断言主/副句的**可见文字区域**更近且不重叠、不触碰下排播放；左上标题单行截断，长歌名不覆盖右上操作，背景依旧可拖。
-- [ ] Rust 测试本地合成详情 JSON：状态码、单歌曲、精确 ID、标题边界和错误返回；`LyricsSession` 切歌或 unavailable 后拒绝旧标题结果；标题失败不影响已有歌词事件。
-- [ ] 让歌词的主/副句垂直位置相互靠近；新增单行左上标题显示于背景内容视图但不接管拖动。有效 ID 请求采用 HTTPS、体积/时间上限，歌词请求先返回后再异步请求歌名；只维护当前歌曲内存标题，Swift 状态事件清除旧歌名。复跑各项测试。
+- [x] Swift 测试含常见短句、两行双句和极端省略，断言主/副句的**可见文字区域**更近且不重叠、不触碰下排播放；左上标题单行截断，长歌名不覆盖右上操作，背景依旧可拖。
+- [x] Rust 测试本地合成详情 JSON：状态码、单歌曲、精确 ID、标题边界和错误返回；`LyricsSession` 切歌或 unavailable 后拒绝旧标题结果；标题失败不影响已有歌词事件。
+- [x] 让歌词的主/副句垂直位置相互靠近；新增单行左上标题显示于背景内容视图但不接管拖动。有效 ID 请求采用 HTTPS、体积/时间上限，歌词请求先返回后再异步请求歌名；只维护当前歌曲内存标题，Swift 状态事件清除旧歌名。复跑各项测试。
+
+实测备注：副句与主句的**可见**间距固定为 12 pt（`LyricStack.gap`），成对居中、下沿至少留 4 pt，字体缩小后间距不变；单行状态仍垂直居中。标题放在背景内容视图左上、与工具同一行（`OverlayLayout.titleFrame`，右端与工具栏留 12 pt），`hitTest` 返回 nil 所以点标题仍能拖动整块浮层，空白标题与任何状态事件都清空它。歌名走同一条 `curl` HTTPS 路径（体积 64 KiB、连接 3 s／总 8 s 上限），只在返回单曲、ID 完全一致且标题非空时发布，超长标题在 120 字符处截断；真实请求已验证 `ids=[186016]` 返回“晴天”。
 
 ### Task 4: 打包验收及本地提交
 

@@ -77,46 +77,56 @@ final class LyricsView: NSView {
         let hasSecondary = !secondaryText.isEmpty
         let inset: CGFloat = 26
         let bandWidth = max(0, bounds.width - inset * 2)
-        let primaryBand: NSRect
-        if hasSecondary {
-            primaryBand = NSRect(x: inset, y: 58, width: bandWidth, height: 60)
-        } else {
-            primaryBand = NSRect(x: inset, y: (bounds.height - 60) / 2,
-                                 width: bandWidth, height: 60)
-        }
-        layoutText(primaryText, in: mainLabel, chip: mainChip, band: primaryBand,
-                   preferredSize: 24, minimumSize: 16, weight: .semibold)
+        let primary = measured(primaryText, in: mainLabel, width: bandWidth,
+                               preferredSize: 24, minimumSize: 16, weight: .semibold)
         detailLabel.isHidden = !hasSecondary
-        if hasSecondary {
-            layoutText(secondaryText, in: detailLabel, chip: detailChip,
-                       band: NSRect(x: inset, y: 9, width: bandWidth, height: 44),
-                       preferredSize: 15, minimumSize: 12, weight: .medium)
-        } else {
+        guard hasSecondary else {
             detailChip.isHidden = true
             detailLabel.setAccessibilityLabel("")
+            // A lone status or waiting line stays vertically centered.
+            place(primary, in: mainLabel, chip: mainChip,
+                  bottom: (bounds.height - primary.height) / 2)
+            return
         }
+        let detail = measured(secondaryText, in: detailLabel, width: bandWidth,
+                              preferredSize: 15, minimumSize: 12, weight: .medium)
+        // One exact gap between the two visible text areas, centered as a pair, so
+        // the lines read together no matter how far the fonts had to shrink.
+        let total = primary.height + detail.height + LyricStack.gap
+        let bottom = max(LyricStack.minimumBottomInset, (bounds.height - total) / 2)
+        place(detail, in: detailLabel, chip: detailChip, bottom: bottom)
+        place(primary, in: mainLabel, chip: mainChip,
+              bottom: bottom + detail.height + LyricStack.gap)
     }
 
-    private func layoutText(_ original: String, in label: NSTextField, chip: NSView,
-                            band: NSRect, preferredSize: CGFloat, minimumSize: CGFloat,
-                            weight: NSFont.Weight) {
-        let full = fittedText(original, width: max(1, band.width - 24), for: label,
-                              preferredSize: preferredSize, minimumSize: minimumSize, weight: weight)
-        let fittedWidth = min(band.width, max(24, full.width + 24))
-        let lineHeight = ceil(full.font.ascender - full.font.descender + full.font.leading)
-        let labelHeight = min(band.height, CGFloat(full.lineCount) * lineHeight + 4)
-        label.frame = NSRect(x: bounds.midX - fittedWidth / 2,
-                             y: band.midY - labelHeight / 2,
-                             width: fittedWidth, height: labelHeight)
-        label.font = full.font
-        label.stringValue = full.text
-        label.setAccessibilityLabel(original)
+    private func measured(_ original: String, in label: NSTextField, width: CGFloat,
+                          preferredSize: CGFloat, minimumSize: CGFloat,
+                          weight: NSFont.Weight) -> MeasuredLine {
+        let fit = fittedText(original, width: max(1, width - 24), for: label,
+                             preferredSize: preferredSize, minimumSize: minimumSize, weight: weight)
+        let lineHeight = ceil(fit.font.ascender - fit.font.descender + fit.font.leading)
+        return MeasuredLine(
+            original: original,
+            fit: fit,
+            width: min(width, max(24, fit.width + 24)),
+            height: min(LyricStack.maximumLineHeight, CGFloat(fit.lineCount) * lineHeight + 4))
+    }
 
-        chip.isHidden = original.isEmpty || style.chipOpacity <= 0
+    private func place(_ line: MeasuredLine, in label: NSTextField, chip: NSView,
+                       bottom: CGFloat) {
+        label.frame = NSRect(x: bounds.midX - line.width / 2, y: bottom,
+                             width: line.width, height: line.height)
+        label.font = line.fit.font
+        label.stringValue = line.fit.text
+        label.setAccessibilityLabel(line.original)
+
+        chip.isHidden = line.original.isEmpty || style.chipOpacity <= 0
         if !chip.isHidden {
-            let chipHeight = min(band.height, labelHeight + 8)
-            chip.frame = NSRect(x: label.frame.minX, y: band.midY - chipHeight / 2,
-                                width: fittedWidth, height: chipHeight)
+            // The optional backing hugs the visible text with a small padding.
+            let chipHeight = min(LyricStack.maximumLineHeight, line.height + 8)
+            chip.frame = NSRect(x: label.frame.minX,
+                                y: bottom + (line.height - chipHeight) / 2,
+                                width: line.width, height: chipHeight)
         }
     }
 
@@ -140,6 +150,22 @@ final class LyricsView: NSView {
         secondaryText = secondary
         needsLayout = true
     }
+}
+
+/// Vertical rhythm of the lyric band: the two visible lines stay one close pair.
+enum LyricStack {
+    static let gap: CGFloat = 12
+    static let minimumBottomInset: CGFloat = 4
+    /// The tallest visible text area: two rows at the preferred font size.
+    static let maximumLineHeight: CGFloat = 62
+}
+
+/// A fitted lyric line before it is positioned inside the band.
+private struct MeasuredLine {
+    let original: String
+    let fit: FittedLyric
+    let width: CGFloat
+    let height: CGFloat
 }
 
 /// Fit at grapheme boundaries, never silently drawing beyond a two-row band.

@@ -1,6 +1,10 @@
 //! Convert verified playback into bounded local JSON-line events for the UI.
 
-use crate::{lrc::TimedLyrics, lyrics::LyricsError, Snapshot};
+use crate::{
+    lrc::TimedLyrics,
+    lyrics::{LyricsError, TitleError},
+    Snapshot,
+};
 use serde::Serialize;
 
 const RETRY_MS: u64 = 10_000;
@@ -9,6 +13,10 @@ const RETRY_MS: u64 = 10_000;
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Event {
     Loading,
+    /// Published once per track, and only after a verified detail response.
+    Title {
+        title: String,
+    },
     Intro {
         next: String,
         playing: bool,
@@ -38,6 +46,12 @@ pub struct LoadRequest {
     pub epoch: u64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TitleRequest {
+    pub track_id: String,
+    pub epoch: u64,
+}
+
 #[derive(Default)]
 pub struct LyricsSession {
     track_id: Option<String>,
@@ -46,6 +60,9 @@ pub struct LyricsSession {
     loading: bool,
     request_taken: bool,
     epoch: u64,
+    title: Option<String>,
+    title_ready: bool,
+    title_attempted: bool,
 }
 
 impl LyricsSession {
@@ -61,6 +78,15 @@ impl LyricsSession {
             self.error = None;
             self.loading = true;
             self.request_taken = false;
+            self.title = None;
+            self.title_ready = false;
+            self.title_attempted = false;
+        }
+        if self.title_ready {
+            self.title_ready = false;
+            if let Some(title) = self.title.clone() {
+                return Event::Title { title };
+            }
         }
         if let Some(lyrics) = &self.lyrics {
             if let Some(line) = lyrics.at(snapshot.estimated_position_ms) {
@@ -115,6 +141,36 @@ impl LyricsSession {
         })
     }
 
+    /// A title is requested only after the lyrics for the same track came back, so
+    /// the extra request can never delay the first line.
+    pub fn take_title_request(&mut self) -> Option<TitleRequest> {
+        if self.title_attempted || self.title.is_some() || self.lyrics.is_none() {
+            return None;
+        }
+        let track_id = self.track_id.clone()?;
+        self.title_attempted = true;
+        Some(TitleRequest {
+            track_id,
+            epoch: self.epoch,
+        })
+    }
+
+    /// A late or stale title is dropped instead of being shown for another song.
+    pub fn receive_title(
+        &mut self,
+        request: &TitleRequest,
+        result: Result<String, TitleError>,
+    ) -> bool {
+        if self.epoch != request.epoch || self.track_id.as_deref() != Some(&request.track_id) {
+            return false;
+        }
+        if let Ok(title) = result {
+            self.title = Some(title);
+            self.title_ready = true;
+        }
+        true
+    }
+
     pub fn receive(
         &mut self,
         request: &LoadRequest,
@@ -159,6 +215,9 @@ impl LyricsSession {
         self.error = None;
         self.loading = false;
         self.request_taken = false;
+        self.title = None;
+        self.title_ready = false;
+        self.title_attempted = false;
         Event::Unavailable {
             reason: reason.to_owned(),
         }
@@ -193,8 +252,8 @@ impl LyricsSession {
 
 #[cfg(test)]
 mod tests {
-    use super::{Event, LyricsSession};
-    use crate::{RawPlayback, Snapshot};
+    use super::{Event, LyricsSession, TitleRequest};
+    use crate::{lyrics::TitleError, RawPlayback, Snapshot};
     use std::time::Instant;
 
     fn snapshot(id: &str, ms: u64, playing: bool, held_paused: bool) -> Snapshot {
@@ -345,6 +404,75 @@ mod tests {
         assert!(serde_json::to_string(&line)
             .unwrap()
             .contains("\"duration_ms\":null"));
+    }
+
+    #[test]
+    fn title_waits_for_lyrics_then_publishes_once_and_rejects_stale_results() {
+        let mut session = LyricsSession::new();
+        let a = snapshot("1", 1_100, true, false);
+        assert!(matches!(session.observe(&a, 0), Event::Loading));
+        assert!(
+            session.take_title_request().is_none(),
+            "the title must wait for the lyric request to come back"
+        );
+        session
+            .install_response("1", br#"{"code":200,"lrc":{"lyric":"[00:01]first"}}"#, 1)
+            .unwrap();
+        let request = session.take_title_request().expect("a title request");
+        assert_eq!(request.track_id, "1");
+        assert!(
+            session.take_title_request().is_none(),
+            "only one title request per track"
+        );
+        assert!(
+            matches!(session.observe(&a, 2), Event::Line { text, .. } if text == "first"),
+            "a slow title request never delays or replaces a lyric event"
+        );
+        let stale = TitleRequest {
+            track_id: request.track_id.clone(),
+            epoch: request.epoch.wrapping_sub(1),
+        };
+        assert!(!session.receive_title(&stale, Ok("旧歌名".into())));
+        assert!(session.receive_title(&request, Ok("合成歌名".into())));
+        assert!(matches!(
+            session.observe(&a, 3),
+            Event::Title { title } if title == "合成歌名"
+        ));
+        assert!(
+            matches!(session.observe(&a, 4), Event::Line { .. }),
+            "a verified title is published exactly once"
+        );
+
+        let b = snapshot("2", 0, true, false);
+        assert!(matches!(session.observe(&b, 5), Event::Loading));
+        assert!(
+            !session.receive_title(&request, Ok("旧歌名".into())),
+            "a title that arrives after the track changed is dropped"
+        );
+        assert!(matches!(session.observe(&b, 6), Event::Loading));
+    }
+
+    #[test]
+    fn title_failure_only_hides_the_title_and_unavailable_resets_it() {
+        let mut session = LyricsSession::new();
+        let a = snapshot("1", 1_100, true, false);
+        assert!(matches!(session.observe(&a, 0), Event::Loading));
+        session
+            .install_response("1", br#"{"code":200,"lrc":{"lyric":"[00:01]first"}}"#, 1)
+            .unwrap();
+        let request = session.take_title_request().unwrap();
+        assert!(session.receive_title(&request, Err(TitleError::Network)));
+        assert!(
+            matches!(session.observe(&a, 2), Event::Line { text, .. } if text == "first"),
+            "a failed title request leaves the lyric stream untouched"
+        );
+        assert!(
+            session.take_title_request().is_none(),
+            "the same track is not retried in a tight loop"
+        );
+
+        session.unavailable("no_song");
+        assert!(session.take_title_request().is_none());
     }
 
     #[test]
