@@ -137,30 +137,35 @@ check(store.load().chipOpacity == baseline.chipOpacity, "Infinity fallback")
 defaults.set(true, forKey: "overlayStyle.backgroundOpacity")
 check(store.load().backgroundOpacity == baseline.backgroundOpacity, "Boolean opacity fallback")
 
-// The three annotations are positions inside one continuous background, not three cards.
-let lyricRect = NSRect(x: 116, y: 144, width: 848, height: 126)
+// Tool actions stay above; transport sits between lyrics and waveform on one background.
+let lyricRect = NSRect(x: 116, y: 180, width: 848, height: 126)
 let screen = NSRect(x: 0, y: 0, width: 1000, height: 600)
 let outerRect = OverlayLayout.outerFrame(for: lyricRect)
 let toolbarRect = OverlayLayout.toolbarFrame(for: lyricRect)
 let collapsedRect = OverlayLayout.toolbarFrame(for: lyricRect, collapsed: true)
+let playbackRect = OverlayLayout.playbackFrame(for: lyricRect)
 let railRect = OverlayLayout.railFrame(for: lyricRect)
 let envelope = OverlayLayout.envelope(for: lyricRect)
 check(OverlayLayout.lyricSize == lyricRect.size &&
-      outerRect == NSRect(x: 100, y: 100, width: 880, height: 236),
-      "One 880×236 background encloses the lyric region")
-check(toolbarRect == NSRect(x: 668, y: 278, width: 294, height: 44) &&
-      near(toolbarRect.minY - lyricRect.maxY, 8) && outerRect.contains(toolbarRect),
-      "Right-aligned controls stay inside the enclosing frame, above the lyrics")
+      outerRect == NSRect(x: 100, y: 100, width: 880, height: 256),
+      "One compact 880×256 background encloses all four content zones")
+check(toolbarRect == NSRect(x: 804, y: 310, width: 160, height: 36) &&
+      near(toolbarRect.minY - lyricRect.maxY, 4) && outerRect.contains(toolbarRect),
+      "Only placement and appearance tools occupy the compact top-right row")
 check(near(collapsedRect.maxX, toolbarRect.maxX) &&
       near(collapsedRect.maxY, toolbarRect.maxY),
       "Collapsing keeps the upper-right anchor")
-check(railRect == NSRect(x: 124, y: 110, width: 832, height: 28) &&
-      near(lyricRect.minY - railRect.maxY, 6) && outerRect.contains(railRect),
-      "The compact full-width waveform sits 6 pt beneath the lyrics")
+check(playbackRect == NSRect(x: 474, y: 144, width: 132, height: 32) &&
+      near(lyricRect.minY - playbackRect.maxY, 4) &&
+      near(playbackRect.midX, outerRect.midX) && outerRect.contains(playbackRect),
+      "Transport has its own centered row four points beneath the lyric region")
+check(railRect == NSRect(x: 124, y: 112, width: 832, height: 28) &&
+      near(playbackRect.minY - railRect.maxY, 4) && outerRect.contains(railRect),
+      "The full-width waveform sits four points beneath the transport row")
 check(outerRect.contains(lyricRect) && envelope == outerRect &&
       !toolbarRect.intersects(lyricRect) && !railRect.intersects(lyricRect) &&
-      !toolbarRect.intersects(railRect),
-      "Content regions fit within one background without overlapping")
+      !playbackRect.intersects(lyricRect) && !playbackRect.intersects(railRect),
+      "Tools, text, transport and waveform do not overlap")
 check(ToolbarPlacement.origin(overlay: lyricRect,
                               size: OverlayControls.expandedSize) == toolbarRect.origin,
       "Toolbar placement uses the enclosing frame's top-right inset")
@@ -169,15 +174,15 @@ check(OverlayVisibility.origin(for: envelope, visibleFrames: [screen]) == envelo
       "Keep the complete framed group on screen without jumping")
 let rescued = OverlayVisibility.origin(
     for: envelope.offsetBy(dx: 1200, dy: 700), visibleFrames: [screen])
-check(near(rescued.x, 120) && near(rescued.y, 364),
+check(near(rescued.x, 120) && near(rescued.y, 344),
       "A disconnected screen recovers the whole enclosing frame")
 let clippedLyric = lyricRect.offsetBy(dx: -140, dy: -140)
 let corrected = OverlayLayout.constrainedOrigin(for: clippedLyric, visibleFrames: [screen])
-check(near(corrected.x, 16) && near(corrected.y, 44),
+check(near(corrected.x, 16) && near(corrected.y, 80),
       "Dragging clips the outer frame before losing its toolbar or lower waveform")
 let topEdge = OverlayVisibility.origin(
     for: envelope.offsetBy(dx: 80, dy: 450), visibleFrames: [screen])
-check(near(topEdge.y, 364), "Screen top reserves room for the framed toolbar")
+check(near(topEdge.y, 344), "Screen top reserves room for the framed toolbar")
 let secondEnvelope = envelope.offsetBy(dx: 1100, dy: -20)
 check(OverlayVisibility.origin(for: secondEnvelope,
                                visibleFrames: [screen, secondScreen]) == secondEnvelope.origin,
@@ -188,32 +193,43 @@ let controls = OverlayControls()
 check(!controls.panel.hasShadow &&
       controls.controlPanels.allSatisfy { $0.level.rawValue > NSWindow.Level.floating.rawValue },
       "Individual transparent controls float above the lyrics without detached shadows")
-check(controls.panel.ignoresMouseEvents && !controls.panel.isVisible &&
+check(controls.panel.ignoresMouseEvents && controls.playbackPanel.ignoresMouseEvents &&
+      !controls.panel.isVisible && !controls.playbackPanel.isVisible &&
       controls.panel.contentView?.layer?.backgroundColor?.alpha == 0 &&
-      controls.panel.contentView?.layer?.borderWidth == 0,
-      "Upper toolbar is just an invisible click-through layout surface")
+      controls.playbackPanel.contentView?.layer?.backgroundColor?.alpha == 0 &&
+      controls.panel.contentView?.layer?.borderWidth == 0 &&
+      controls.playbackPanel.contentView?.layer?.borderWidth == 0,
+      "Both functional groups use invisible click-through layout surfaces")
 check(controls.controlPanels.count == 8 &&
       controls.controlPanels.allSatisfy {
           !$0.hasShadow && !$0.isOpaque && !$0.hidesOnDeactivate &&
           $0.collectionBehavior.contains(.canJoinAllSpaces) && $0.animationBehavior == .none
       },
-      "Only individual 34-point control windows can receive clicks")
+      "Only individual control icon windows can receive clicks")
 controls.follow(overlay: lyricRect)
-check((controls.controlPanels.enumerated().filter { $0.offset != 4 }.allSatisfy {
-          near($0.element.frame.midY, controls.panel.frame.midY) &&
-          controls.panel.frame.contains($0.element.frame)
-      }), "Seven controls fit in one row above the lyric frame")
-check(controls.controlPanels[5].frame.minX < controls.controlPanels[0].frame.minX &&
-      controls.controlPanels[7].frame.maxX < controls.controlPanels[1].frame.minX,
-      "Playback icons precede placement and appearance icons")
+check(controls.panel.frame == toolbarRect && controls.playbackPanel.frame == playbackRect &&
+      (0...3).allSatisfy { controls.panel.frame.contains(controls.controlPanels[$0].frame) } &&
+      (5...7).allSatisfy { controls.playbackPanel.frame.contains(controls.controlPanels[$0].frame) },
+      "Four tools occupy the upper-right row and three transport buttons sit beneath lyrics")
+check((5...7).allSatisfy { near(controls.controlPanels[$0].frame.midY, playbackRect.midY) } &&
+      near(controls.controlPanels[6].frame.midX, outerRect.midX) &&
+      controls.controlPanels[5].frame.maxX < controls.controlPanels[6].frame.minX &&
+      controls.controlPanels[6].frame.maxX < controls.controlPanels[7].frame.minX &&
+      controls.controlPanels[6].frame.size == NSSize(width: 38, height: 32) &&
+      controls.controlPanels[5].frame.size == NSSize(width: 34, height: 30) &&
+      controls.controlPanels[7].frame.size == NSSize(width: 34, height: 30),
+      "Playback trio is centered with a slightly larger middle button and ten-point gaps")
 check(controls.controlPanels[5].contentView!.accessibilityLabel() == "上一首" &&
       controls.controlPanels[7].contentView!.accessibilityLabel() == "下一首",
       "Transport controls have accessible names")
 controls.setPlaybackAvailability(previous: false, toggle: .unavailable, next: false)
-check([5, 6, 7].allSatisfy { !(controls.controlPanels[$0].contentView! as! NSButton).isEnabled },
-      "Transport controls are disabled until reliable menu actions are available")
+check([5, 6, 7].allSatisfy {
+    !(controls.controlPanels[$0].contentView! as! NSButton).isEnabled &&
+    controls.controlPanels[$0].ignoresMouseEvents
+}, "Unavailable transport icons remain visible but cannot intercept desktop input")
 controls.setPlaybackAvailability(previous: true, toggle: .pause, next: true)
 check([5, 6, 7].allSatisfy { (controls.controlPanels[$0].contentView! as! NSButton).isEnabled } &&
+      (5...7).allSatisfy { !controls.controlPanels[$0].ignoresMouseEvents } &&
       controls.controlPanels[6].contentView!.accessibilityLabel() == "暂停",
       "An available playing state exposes a pause control")
 let handle = controls.controlPanels[0].contentView!
@@ -224,8 +240,11 @@ let styledToolbar = OverlayStyle(backgroundRGB: "#112233", textRGB: "#20CF80", c
 controls.applyStyle(styledToolbar)
 let handleGlyph = handle.subviews.first as! NSTextField
 check(OverlayStyle.rgbHex(handleGlyph.textColor!) == "#20CF80" &&
-      near(controls.panel.contentView!.layer!.backgroundColor!.alpha, 0),
-      "Toolbar icons follow user tint without painting a separate backdrop")
+      near(controls.panel.contentView!.layer!.backgroundColor!.alpha, 0) &&
+      near(controls.playbackPanel.contentView!.layer!.backgroundColor!.alpha, 0) &&
+      (controls.controlPanels[6].contentView! as! NSButton).contentTintColor!.alphaComponent >
+      (controls.controlPanels[5].contentView! as! NSButton).contentTintColor!.alphaComponent,
+      "Separated groups share tint, with a brighter middle button and no second card")
 check(controls.controlPanels.compactMap { $0.contentView as? NSButton }
     .allSatisfy { OverlayStyle.rgbHex($0.contentTintColor!) == "#20CF80" },
       "All toolbar icons follow the lyric text color")
@@ -271,12 +290,14 @@ check(tappedPrevious == 1 && tappedPlayback == 1 && tappedNext == 1,
       "All three transport controls dispatch to their controller")
 controls.setPlaybackAvailability(previous: false, toggle: .unavailable, next: false)
 for index in [5, 6, 7] { (controls.controlPanels[index].contentView! as! NSButton).performClick(nil) }
-check(tappedPrevious == 1 && tappedPlayback == 1 && tappedNext == 1,
+check(tappedPrevious == 1 && tappedPlayback == 1 && tappedNext == 1 &&
+      (5...7).allSatisfy { controls.controlPanels[$0].ignoresMouseEvents },
       "Unavailable transport controls cannot dispatch actions")
 controls.setLocked(true)
 check(controls.controlPanels[0].ignoresMouseEvents &&
-      controls.controlPanels.dropFirst().allSatisfy { !$0.ignoresMouseEvents },
-      "Locked drag handle passes clicks through; remaining buttons stay interactive")
+      (1...4).allSatisfy { !controls.controlPanels[$0].ignoresMouseEvents } &&
+      (5...7).allSatisfy { controls.controlPanels[$0].ignoresMouseEvents },
+      "Lock passes through drag and disabled transport; remaining tools stay interactive")
 check(handleGlyph.textColor!.alphaComponent < 0.5,
       "Locked drag handle dims while remaining visible")
 dragDelta = .zero
@@ -284,41 +305,58 @@ handle.mouseDown(with: mouseDown)
 handle.mouseDragged(with: movementEvent(x: 35, y: 22, deltaX: 25, deltaY: -12))
 check(near(dragDelta.x, 0) && near(dragDelta.y, 0), "Locked drag handle never moves lyrics")
 controls.setCollapsed(true)
-check(near(controls.panel.frame.width, 42) && near(controls.panel.frame.height, 44) &&
-      controls.panel.contentView!.frame.size == OverlayControls.collapsedSize,
-      "Collapsed toolbar geometry shrinks above the lyrics")
+check(near(controls.panel.frame.width, 42) && near(controls.panel.frame.height, 36) &&
+      controls.panel.contentView!.frame.size == OverlayControls.collapsedSize &&
+      controls.playbackPanel.frame == playbackRect,
+      "Collapsing the tool row never moves the centered transport row")
 controls.follow(overlay: lyricRect)
 check(near(controls.panel.frame.maxX, toolbarRect.maxX) &&
       near(controls.panel.frame.maxY, toolbarRect.maxY),
       "Collapsed button keeps the upper-right edge")
 toolbarButtons.first(where: { $0.accessibilityLabel() == "展开歌词工具条" })!.performClick(nil)
 check(tappedCollapse == 2, "Collapsed toolbar exposes an expand action")
+controls.setPlaybackAvailability(previous: true, toggle: .play, next: true)
+for index in [5, 6, 7] { (controls.controlPanels[index].contentView! as! NSButton).performClick(nil) }
+check(tappedPrevious == 2 && tappedPlayback == 2 && tappedNext == 2,
+      "Collapsed tools leave the transport row operational")
 controls.setCollapsed(false)
 check(controls.panel.frame.size == OverlayLayout.toolbarSize, "Restored toolbar geometry")
 controls.follow(overlay: lyricRect)
-check(controls.panel.frame == toolbarRect && !controls.panel.frame.intersects(lyricRect),
-      "Interactive toolbar follows the lyric panel from outside")
+check(controls.panel.frame == toolbarRect && controls.playbackPanel.frame == playbackRect &&
+      !controls.panel.frame.intersects(lyricRect) &&
+      !controls.playbackPanel.frame.intersects(lyricRect),
+      "Both icon rows follow the lyrics without stealing lyric space")
 controls.setVisible(true)
+controls.setPlaybackAvailability(previous: true, toggle: .pause, next: true)
 let activeWindows = controls.controlPanels.filter(\.isVisible)
-check(activeWindows.count == 7 && activeWindows.allSatisfy { $0.frame.width == 34 },
-      "Expanded toolbar exposes seven small hit windows rather than one large one")
+check(activeWindows.count == 7 &&
+      (0...3).allSatisfy { controls.controlPanels[$0].isVisible } &&
+      (5...7).allSatisfy { controls.controlPanels[$0].isVisible } &&
+      !controls.controlPanels[4].isVisible &&
+      controls.playbackPanel.isVisible,
+      "Both groups expose seven small hit windows rather than one large panel")
 check(activeWindows.allSatisfy { !$0.ignoresMouseEvents || $0 === controls.controlPanels[0] },
       "Icon panels remain interactive")
-let gap = NSPoint(x: controls.panel.frame.minX + 43, y: controls.panel.frame.minY + 24)
-check(controls.panel.frame.contains(gap) &&
-      !activeWindows.contains(where: { $0.frame.contains(gap) }),
-      "Transparent space between icons contains no mouse-intercepting window")
+let gap = NSPoint(x: controls.panel.frame.minX + 41, y: controls.panel.frame.minY + 18)
+let playbackGap = NSPoint(x: controls.playbackPanel.frame.minX + 42,
+                          y: controls.playbackPanel.frame.midY)
+check(controls.panel.frame.contains(gap) && controls.playbackPanel.frame.contains(playbackGap) &&
+      !activeWindows.contains(where: { $0.frame.contains(gap) || $0.frame.contains(playbackGap) }),
+      "Both transparent icon gaps contain no mouse-intercepting window")
 controls.setCollapsed(true)
-check(controls.controlPanels.filter(\.isVisible).count == 1 &&
-      controls.controlPanels[4].isVisible,
-      "Collapsed toolbar leaves only one small hit window")
-check(near(controls.controlPanels[4].frame.maxX, controls.panel.frame.maxX - 7),
+check(controls.controlPanels.filter(\.isVisible).count == 4 &&
+      controls.controlPanels[4].isVisible &&
+      (5...7).allSatisfy { controls.controlPanels[$0].isVisible } &&
+      controls.playbackPanel.isVisible,
+      "Collapsing tools leaves the centered playback trio available")
+check(near(controls.controlPanels[4].frame.maxX, controls.panel.frame.maxX - 4),
       "The collapsed hit window stays on the same right edge")
-check(near(controls.controlPanels[4].frame.minY, controls.panel.frame.minY + 6),
+check(near(controls.controlPanels[4].frame.minY, controls.panel.frame.minY + 2),
       "The collapsed hit window stays vertically centered")
 controls.setVisible(false)
-check(controls.controlPanels.allSatisfy { !$0.isVisible } && !controls.panel.isVisible,
-      "Hiding lyrics removes the toolbar background and hit targets")
+check(controls.controlPanels.allSatisfy { !$0.isVisible } &&
+      !controls.panel.isVisible && !controls.playbackPanel.isVisible,
+      "Hiding lyrics removes both groups and all hit targets")
 
 // Exercise the window server's real mouse target selection, not just view hitTest.
 // Window ordering and ignoresMouseEvents cross a process boundary, so wait for
@@ -336,12 +374,20 @@ controls.follow(overlay: liveOverlay)
 controls.setCollapsed(false)
 controls.setLocked(false)
 controls.setVisible(true)
-let clickGap = NSPoint(x: controls.panel.frame.minX + 43,
-                       y: controls.panel.frame.minY + 24)
+let clickGap = NSPoint(x: controls.panel.frame.minX + 41,
+                       y: controls.panel.frame.minY + 18)
+let clickPlaybackGap = NSPoint(x: controls.playbackPanel.frame.minX + 42,
+                               y: controls.playbackPanel.frame.midY)
 func mouseTarget(_ point: NSPoint) -> Int {
     NSWindow.windowNumber(at: point, belowWindowWithWindowNumber: 0)
 }
+let sessionInfo = CGSessionCopyCurrentDictionary() as? [String: Any]
+let sessionLocked = sessionInfo?["CGSSessionScreenIsLocked"] as? Bool ?? false
+if sessionLocked { print("SKIPPED WindowServer pointer assertions: macOS session is locked") }
 func awaitMouseState(_ message: String, _ matches: () -> Bool) {
+    // Loginwindow's secure overlay wins hit testing while the display is locked.
+    // Keep AppKit state tests, but never report these desktop-hit assertions as passed.
+    if sessionLocked { return }
     let deadline = Date().addingTimeInterval(2)
     while Date() < deadline {
         if matches() { return }
@@ -358,10 +404,14 @@ let dragCenter = NSPoint(x: controls.controlPanels[0].frame.midX,
                          y: controls.controlPanels[0].frame.midY)
 let lockCenter = NSPoint(x: controls.controlPanels[1].frame.midX,
                          y: controls.controlPanels[1].frame.midY)
-awaitMouseState("All seven buttons receive clicks; toolbar gap is click-through") {
+awaitMouseState("Both icon rows receive clicks; their gaps are click-through") {
     expandedButtonsReceiveClicks() &&
     mouseTarget(clickGap) != controls.panel.windowNumber &&
-    !controls.controlPanels.contains(where: { $0.windowNumber == mouseTarget(clickGap) })
+    mouseTarget(clickPlaybackGap) != controls.playbackPanel.windowNumber &&
+    !controls.controlPanels.contains(where: {
+        $0.windowNumber == mouseTarget(clickGap) ||
+        $0.windowNumber == mouseTarget(clickPlaybackGap)
+    })
 }
 // Run a native down/up sequence through the small panel, not NSButton.performClick.
 // Posting the up event first lets NSButton's tracking loop consume it after down.
@@ -392,7 +442,9 @@ controls.setVisible(false)
 awaitMouseState("Hidden controls leave no mouse targets over the desktop") {
     mouseTarget(dragCenter) != controls.controlPanels[0].windowNumber &&
     mouseTarget(lockCenter) != controls.controlPanels[1].windowNumber &&
-    mouseTarget(dragCenter) != controls.panel.windowNumber
+    mouseTarget(dragCenter) != controls.panel.windowNumber &&
+    mouseTarget(NSPoint(x: controls.controlPanels[6].frame.midX,
+                        y: controls.controlPanels[6].frame.midY)) != controls.controlPanels[6].windowNumber
 }
 controls.setVisible(true)
 awaitMouseState("Buttons work immediately after showing the toolbar again") {
@@ -401,8 +453,12 @@ awaitMouseState("Buttons work immediately after showing the toolbar again") {
 controls.setCollapsed(true)
 let expandPanel = controls.controlPanels[4]
 let expandCenter = NSPoint(x: expandPanel.frame.midX, y: expandPanel.frame.midY)
-awaitMouseState("Collapsed toolbar retains its clickable expand button") {
+awaitMouseState("Collapsed tools retain expand and all playback hit targets") {
     mouseTarget(expandCenter) == expandPanel.windowNumber &&
+    (5...7).allSatisfy { index in
+        let window = controls.controlPanels[index]
+        return mouseTarget(NSPoint(x: window.frame.midX, y: window.frame.midY)) == window.windowNumber
+    } &&
     mouseTarget(dragCenter) != controls.controlPanels[0].windowNumber
 }
 controls.setCollapsed(false)
@@ -413,9 +469,29 @@ controls.setLocked(true)
 lyricPanel.ignoresMouseEvents = true
 awaitMouseState("Locked lyrics and drag handle pass clicks through, but lock stays clickable") {
     mouseTarget(lockCenter) == controls.controlPanels[1].windowNumber &&
+    (5...7).allSatisfy { index in
+        let window = controls.controlPanels[index]
+        return mouseTarget(NSPoint(x: window.frame.midX, y: window.frame.midY)) == window.windowNumber
+    } &&
     mouseTarget(dragCenter) != controls.controlPanels[0].windowNumber &&
     mouseTarget(dragCenter) != lyricPanel.windowNumber &&
-    mouseTarget(clickGap) != controls.panel.windowNumber
+    mouseTarget(clickGap) != controls.panel.windowNumber &&
+    mouseTarget(clickPlaybackGap) != controls.playbackPanel.windowNumber
+}
+controls.setPlaybackAvailability(previous: false, toggle: .unavailable, next: false)
+awaitMouseState("Locked disabled transport remains visible without blocking underlying apps") {
+    (5...7).allSatisfy { index in
+        let window = controls.controlPanels[index]
+        return window.isVisible && window.ignoresMouseEvents &&
+            mouseTarget(NSPoint(x: window.frame.midX, y: window.frame.midY)) != window.windowNumber
+    } && mouseTarget(lockCenter) == controls.controlPanels[1].windowNumber
+}
+controls.setPlaybackAvailability(previous: true, toggle: .pause, next: true)
+awaitMouseState("Re-enabled transport immediately accepts clicks after locked pass-through") {
+    (5...7).allSatisfy { index in
+        let window = controls.controlPanels[index]
+        return mouseTarget(NSPoint(x: window.frame.midX, y: window.frame.midY)) == window.windowNumber
+    }
 }
 controls.setVisible(false)
 lyricPanel.orderOut(nil)
@@ -433,7 +509,7 @@ let queuedB = movementEvent(x: 155, y: 300, deltaX: 15, deltaY: 10)
 handle.mouseDown(with: mouseDown)
 handle.mouseDragged(with: queuedA)
 handle.mouseDragged(with: queuedB)
-check(near(overlayForDrag.minX, 151) && near(overlayForDrag.minY, 149),
+check(near(overlayForDrag.minX, 151) && near(overlayForDrag.minY, 185),
       "Queued drag events move by their independent deltas, not moving-window coordinates")
 
 let outer = OverlayFrame()
@@ -481,13 +557,14 @@ check(backgroundDragCount == 1 &&
       near(dragLyricPanel.frame.minX, lyricRect.minX + 20) &&
       near(dragLyricPanel.frame.minY, lyricRect.minY + 10) &&
       outer.panel.frame == OverlayLayout.outerFrame(for: dragLyricPanel.frame) &&
-      controls.panel.frame == OverlayLayout.toolbarFrame(for: dragLyricPanel.frame),
-      "Dragging blank background moves the lyric, unified frame and toolbar together")
+      controls.panel.frame == OverlayLayout.toolbarFrame(for: dragLyricPanel.frame) &&
+      controls.playbackPanel.frame == OverlayLayout.playbackFrame(for: dragLyricPanel.frame),
+      "Dragging blank background moves lyrics, frame and both control groups together")
 outer.panel.contentView!.mouseDragged(with: movementEvent(
     x: 240, y: 215, deltaX: 0, deltaY: -900))
 check(backgroundDragCount == 2 &&
       near(dragLyricPanel.frame.minX, 136) &&
-      near(dragLyricPanel.frame.minY, 408) &&
+      near(dragLyricPanel.frame.minY, 424) &&
       outer.panel.frame == OverlayLayout.outerFrame(for: dragLyricPanel.frame),
       "Blank-background drag keeps the complete group within visible bounds")
 outer.follow(lyrics: lyricRect)
@@ -536,7 +613,8 @@ check(primaryLabel.frame.minX >= 24 && primaryLabel.frame.maxX <= lyricView.boun
       "Two-line lyrics use the full centered band, not an internal control rail")
 check(primaryLabel.frame.minY > detailLabel.frame.maxY &&
       primaryChip.frame.maxX <= lyricView.bounds.maxX - 24 &&
-      detailChip.frame.maxX <= lyricView.bounds.maxX - 24,
+      detailChip.frame.maxX <= lyricView.bounds.maxX - 24 &&
+      lyricRect.minY - playbackRect.maxY == 4,
       "Separate rows and their backgrounds never overlap or leave the lyric frame")
 lyricView.show(primary: String(repeating: "特别长的合成歌词", count: 200), secondary: "")
 lyricView.layout()
@@ -598,9 +676,10 @@ lyricDragCount = 0
 draggableLyrics.mouseDragged(with: movementEvent(
     x: 250, y: 250, deltaX: 0, deltaY: -900))
 check(lyricDragCount == 1 &&
-      near(dragLyricPanel.frame.minY, 408) &&
+      near(dragLyricPanel.frame.minY, 424) &&
       outer.panel.frame == OverlayLayout.outerFrame(for: dragLyricPanel.frame) &&
-      controls.panel.frame == OverlayLayout.toolbarFrame(for: dragLyricPanel.frame),
+      controls.panel.frame == OverlayLayout.toolbarFrame(for: dragLyricPanel.frame) &&
+      controls.playbackPanel.frame == OverlayLayout.playbackFrame(for: dragLyricPanel.frame),
       "Dragging lyric text cannot move any part of the group off-screen")
 dragLyricPanel.orderOut(nil)
 outer.follow(lyrics: lyricRect)
@@ -663,7 +742,8 @@ let emptyBackground = NSPoint(x: outer.panel.frame.minX + 90,
 awaitMouseState("Waveform and empty areas route unlocked clicks to the background") {
     mouseTarget(railCenter) == outer.panel.windowNumber &&
     mouseTarget(emptyBackground) == outer.panel.windowNumber &&
-    mouseTarget(clickGap) == outer.panel.windowNumber
+    mouseTarget(clickGap) == outer.panel.windowNumber &&
+    mouseTarget(clickPlaybackGap) == outer.panel.windowNumber
 }
 outer.setLocked(true)
 controls.setLocked(true)
@@ -671,7 +751,12 @@ awaitMouseState("Locked background passes through while transport and lock still
     mouseTarget(railCenter) != outer.panel.windowNumber &&
     mouseTarget(emptyBackground) != outer.panel.windowNumber &&
     mouseTarget(clickGap) != outer.panel.windowNumber &&
+    mouseTarget(clickPlaybackGap) != outer.panel.windowNumber &&
     mouseTarget(lockCenter) == controls.controlPanels[1].windowNumber &&
+    (5...7).allSatisfy { index in
+        let window = controls.controlPanels[index]
+        return mouseTarget(NSPoint(x: window.frame.midX, y: window.frame.midY)) == window.windowNumber
+    } &&
     mouseTarget(dragCenter) != controls.controlPanels[0].windowNumber
 }
 outer.setLocked(false)

@@ -1,17 +1,18 @@
 import AppKit
 
-/// Geometry of the single visual frame and its three inset regions (AppKit screen coordinates).
+/// Geometry of the single background and its transparent content zones.
 enum OverlayLayout {
-    static let outerSize = NSSize(width: 880, height: 236)
+    static let outerSize = NSSize(width: 880, height: 256)
     static let lyricSize = NSSize(width: 848, height: 126)
-    static let toolbarSize = NSSize(width: 294, height: 44)
-    static let collapsedToolbarSize = NSSize(width: 42, height: 44)
+    static let toolbarSize = NSSize(width: 160, height: 36)
+    static let collapsedToolbarSize = NSSize(width: 42, height: 36)
+    static let playbackSize = NSSize(width: 132, height: 32)
     static let railSize = NSSize(width: 832, height: 28)
 
-    static let lyricInset = NSPoint(x: 16, y: 44)
-    static let toolbarRightInset: CGFloat = 18
-    static let toolbarTopInset: CGFloat = 14
-    static let railInset = NSPoint(x: 24, y: 10)
+    static let lyricInset = NSPoint(x: 16, y: 80)
+    static let toolbarRightInset: CGFloat = 16
+    static let toolbarTopInset: CGFloat = 10
+    static let railInset = NSPoint(x: 24, y: 12)
 
     static func outerFrame(for lyrics: NSRect) -> NSRect {
         NSRect(x: lyrics.minX - lyricInset.x, y: lyrics.minY - lyricInset.y,
@@ -24,13 +25,20 @@ enum OverlayLayout {
         return NSRect(origin: ToolbarPlacement.origin(overlay: lyrics, size: size), size: size)
     }
 
+    static func playbackFrame(for lyrics: NSRect) -> NSRect {
+        let outer = outerFrame(for: lyrics)
+        return NSRect(x: outer.midX - playbackSize.width / 2,
+                      y: lyrics.minY - 4 - playbackSize.height,
+                      width: playbackSize.width, height: playbackSize.height)
+    }
+
     static func railFrame(for lyrics: NSRect) -> NSRect {
         let outer = outerFrame(for: lyrics)
         return NSRect(x: outer.minX + railInset.x, y: outer.minY + railInset.y,
                       width: max(0, outer.width - 2 * railInset.x), height: railSize.height)
     }
 
-    /// The visible outer frame already contains all three inset regions.
+    /// The outer background contains every content zone.
     static func envelope(for lyrics: NSRect) -> NSRect { outerFrame(for: lyrics) }
 
     static func constrainedOrigin(for lyrics: NSRect, visibleFrames: [NSRect]) -> NSPoint {
