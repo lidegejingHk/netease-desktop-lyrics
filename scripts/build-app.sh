@@ -25,7 +25,7 @@ engine="$app/Contents/Resources/netease-lyrics-rs"
 executable="$app/Contents/MacOS/NeteaseDesktopLyrics"
 cp target/release/netease-lyrics-rs "$engine"
 xcrun swiftc -O -warnings-as-errors -target arm64-apple-macos13.0 \
-  -framework AppKit -framework Foundation Sources/DesktopLyrics/*.swift \
+  -framework AppKit -framework Foundation -framework ApplicationServices Sources/DesktopLyrics/*.swift \
   -o "$executable"
 chmod +x "$executable" "$engine"
 plutil -lint "$app/Contents/Info.plist"

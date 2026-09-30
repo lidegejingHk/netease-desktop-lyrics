@@ -20,6 +20,39 @@ check(stdinMode.accessibilityPermissionStatus.contains("终端"),
 check(!stdinMode.accessibilityPermissionStatus.contains("网易云桌面歌词"),
       "Stdin mode does not ask for the independent App permission")
 
+let safeMenu: [PlaybackTransport.Item] = [
+    .init(role: "AXMenuItem", title: "上一个", enabled: true),
+    .init(role: "AXMenuItem", title: "播放", enabled: true),
+    .init(role: "AXMenuItem", title: "下一个", enabled: true)
+]
+check(PlaybackTransport.uniqueIndex(for: .previous, in: safeMenu) == 0 &&
+      PlaybackTransport.uniqueIndex(for: .next, in: safeMenu) == 2,
+      "Only exact, enabled previous and next actions are selected")
+let pausedMenu = PlaybackTransport.availability(safeMenu)
+check(pausedMenu.previous && pausedMenu.toggle == .play && pausedMenu.next,
+      "A single playable item exposes the play button")
+let playingMenu = PlaybackTransport.availability([
+    .init(role: "AXMenuItem", title: "暂停", enabled: true)
+])
+check(!playingMenu.previous && playingMenu.toggle == .pause && !playingMenu.next,
+      "A single pause item exposes pause without guessing other actions")
+let duplicates = safeMenu + [.init(role: "AXMenuItem", title: "上一首", enabled: true)]
+check(PlaybackTransport.uniqueIndex(for: .previous, in: duplicates) == nil,
+      "Two equivalent matches are ambiguous, never press either")
+check(PlaybackTransport.uniqueIndex(for: .next, in: [
+    .init(role: "AXButton", title: "下一个", enabled: true)]) == nil,
+      "A matching title in a non-menu role cannot trigger playback")
+check(PlaybackTransport.uniqueIndex(for: .play, in: [
+    .init(role: "AXMenuItem", title: "播放", enabled: false)]) == nil,
+      "Disabled items cannot trigger playback")
+check(PlaybackTransport.availability([
+    .init(role: "AXMenuItem", title: "播放", enabled: true),
+    .init(role: "AXMenuItem", title: "暂停", enabled: true)
+]).toggle == .unavailable, "Conflicting play/pause menu actions disable the toggle")
+check(PlaybackTransport.availability([
+    .init(role: "AXMenuItem", title: "播放歌曲", enabled: true)
+]).toggle == .unavailable, "Partial menu titles never enable transport")
+
 let suite = "desktop-lyrics-appearance-tests-\(UUID().uuidString)"
 let defaults = UserDefaults(suiteName: suite)!
 defer { defaults.removePersistentDomain(forName: suite) }

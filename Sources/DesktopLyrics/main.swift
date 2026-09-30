@@ -29,6 +29,11 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private var locked = UserDefaults.standard.bool(forKey: "overlayLocked")
     private var showing = UserDefaults.standard.object(forKey: "overlayShowing") as? Bool ?? true
     private var collapsed = UserDefaults.standard.bool(forKey: "toolbarCollapsed")
+    private let transportQueue = DispatchQueue(label: "local.desktop-lyrics.transport", qos: .userInitiated)
+    private var transportTimer: Timer?
+    private var transportRequest = 0
+    private var transportBusy = false
+    private var transportAvailability = PlaybackTransport.Availability.unavailable
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -39,6 +44,12 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
                                                name: NSApplication.didChangeScreenParametersNotification,
                                                object: nil)
         showStatus("正在等待网易云音乐…")
+        if launchMode == .app {
+            refreshTransport()
+            transportTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+                self?.refreshTransport()
+            }
+        }
         if launchMode == .stdin {
             observe(FileHandle.standardInput)
         } else {
@@ -90,6 +101,16 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         controls.onToggleLock = { [weak self] in self?.changeLock() }
         controls.onToggleCollapsed = { [weak self] in self?.changeCollapsed() }
         controls.onToggleSettings = { [weak self] in self?.showOrHideSettings() }
+        controls.onPrevious = { [weak self] in self?.runTransport(.previous) }
+        controls.onNext = { [weak self] in self?.runTransport(.next) }
+        controls.onTogglePlayback = { [weak self] in
+            guard let self else { return }
+            switch self.transportAvailability.toggle {
+            case .play: self.runTransport(.play)
+            case .pause: self.runTransport(.pause)
+            case .unavailable: break
+            }
+        }
         settingsWindow = StyleSettingsPanel(style: styleStore.load())
         settingsWindow.onStyleChange = { [weak self] style in
             self?.styleStore.save(style)
@@ -99,6 +120,39 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         controls.applyStyle(styleStore.load())
         updateControlsPosition()
         if showing { controls.setVisible(true) }
+    }
+
+    private func refreshTransport() {
+        guard launchMode == .app, !transportBusy else { return }
+        transportRequest &+= 1
+        let request = transportRequest
+        transportQueue.async { [weak self] in
+            let state = PlaybackTransport.currentAvailability()
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.shouldStop, !self.transportBusy,
+                      request == self.transportRequest else { return }
+                self.transportAvailability = state
+                self.controls.setPlaybackAvailability(previous: state.previous,
+                                                     toggle: state.toggle, next: state.next)
+            }
+        }
+    }
+
+    private func runTransport(_ action: PlaybackTransport.Action) {
+        guard launchMode == .app, !transportBusy else { return }
+        transportBusy = true
+        transportRequest &+= 1 // invalidate slower in-flight availability reads
+        transportAvailability = .unavailable
+        controls.setPlaybackAvailability(previous: false, toggle: .unavailable, next: false)
+        transportQueue.async { [weak self] in
+            let succeeded = PlaybackTransport.perform(action)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.shouldStop else { return }
+                self.transportBusy = false
+                if !succeeded { NSSound.beep() }
+                self.refreshTransport()
+            }
+        }
     }
 
     private func updateControlsPosition() {
@@ -292,6 +346,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     func applicationWillTerminate(_ notification: Notification) {
         NotificationCenter.default.removeObserver(self)
         shouldStop = true
+        transportTimer?.invalidate()
         if let bridge, bridge.isRunning { bridge.terminate() }
     }
 }
