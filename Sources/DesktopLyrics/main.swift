@@ -32,6 +32,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private let transportQueue = DispatchQueue(label: "local.desktop-lyrics.transport", qos: .userInitiated)
     private var transportTimer: Timer?
     private var transportRequest = 0
+    private var transportChecking = false
     private var transportBusy = false
     private var transportAvailability = PlaybackTransport.Availability.unavailable
 
@@ -124,14 +125,16 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     }
 
     private func refreshTransport() {
-        guard launchMode == .app, !transportBusy else { return }
+        guard launchMode == .app, !shouldStop, !transportBusy, !transportChecking else { return }
+        transportChecking = true
         transportRequest &+= 1
         let request = transportRequest
         transportQueue.async { [weak self] in
             let state = PlaybackTransport.currentAvailability()
             DispatchQueue.main.async { [weak self] in
-                guard let self, !self.shouldStop, !self.transportBusy,
-                      request == self.transportRequest else { return }
+                guard let self, !self.shouldStop, request == self.transportRequest else { return }
+                self.transportChecking = false
+                guard !self.transportBusy else { return }
                 self.transportAvailability = state
                 self.controls.setPlaybackAvailability(previous: state.previous,
                                                      toggle: state.toggle, next: state.next)
@@ -140,8 +143,10 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     }
 
     private func runTransport(_ action: PlaybackTransport.Action) {
-        guard launchMode == .app, !transportBusy else { return }
+        guard launchMode == .app, !shouldStop, !transportBusy,
+              transportAvailability.allows(action) else { return }
         transportBusy = true
+        transportChecking = false
         transportRequest &+= 1 // invalidate slower in-flight availability reads
         transportAvailability = .unavailable
         controls.setPlaybackAvailability(previous: false, toggle: .unavailable, next: false)
