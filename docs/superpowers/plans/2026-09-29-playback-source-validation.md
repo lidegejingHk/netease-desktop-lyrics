@@ -20,7 +20,7 @@ Task 1–5、Task 6 的 CLI 与自动检查已完成，代码在 `feat/playback-
 
 ## 范围、实际探测及停机条件
 
-项目根目录：`/Users/linjingheng/netease-lyrics-rs`。设计文档：`docs/superpowers/specs/2026-09-29-netease-macos-lyrics-design.md`。本阶段仅实现本机已实测存在的主路径：`~/Library/Application Support/com.netease.163music/Documents/storage/CEFCache/Local Storage/leveldb/*.log`；2026-09-29 探测到滚动日志持续更新，包含 `lastPlaying` 标记。另有 `playingList` 可在后续阶段补充标题，但本阶段唯一标识以解密后的 `resourceId` / `trackId` 为准；原来的 `~/Library/Containers/...` 目录在本机为旧数据，不可当成当前源。不能把 LevelDB `.ldb` 中的历史快照当成当前歌曲。`lastPlaying` 可能在未播放时仍保留上次歌曲；本阶段不能由文件存在推断正在播放，须人工验证启动后空闲状态。
+项目根目录：`~/netease-lyrics-rs`。设计文档：`docs/superpowers/specs/2026-09-29-netease-macos-lyrics-design.md`。本阶段仅实现本机已实测存在的主路径：`~/Library/Application Support/com.netease.163music/Documents/storage/CEFCache/Local Storage/leveldb/*.log`；2026-09-29 探测到滚动日志持续更新，包含 `lastPlaying` 标记。另有 `playingList` 可在后续阶段补充标题，但本阶段唯一标识以解密后的 `resourceId` / `trackId` 为准；原来的 `~/Library/Containers/...` 目录在本机为旧数据，不可当成当前源。不能把 LevelDB `.ldb` 中的历史快照当成当前歌曲。`lastPlaying` 可能在未播放时仍保留上次歌曲；本阶段不能由文件存在推断正在播放，须人工验证启动后空闲状态。
 
 该格式未公开；`lastPlaying` 的 AES-128-ECB / PKCS#7 / Base64 格式及密钥来自 [CloudLyrics-for-macOS 的 MIT 实现](https://github.com/hellomyonly55/CloudLyrics-for-macOS/blob/main/Sources/CloudLyrics/NetEaseLocalPlaybackBridge.swift)。引用其机制而不是复制源码。实施时记录来源和 MIT 致谢。CoreAudio 属性 `kAudioHardwarePropertyTranslatePIDToProcessObject` 与 `kAudioProcessPropertyIsRunningOutput` 已在本机 macOS SDK 的 `AudioHardware.h` 验证；输出活动并非必然等同真实播放，要通过暂停/恢复现场验收。
 
