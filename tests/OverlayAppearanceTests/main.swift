@@ -964,6 +964,16 @@ check(anchor != nil &&
       NSScreen.screens.contains(where: { $0.visibleFrame.contains(anchor!) }),
       "Every swatch anchors the shared colour panel beside the settings panel")
 
+// The shared colour panel is part of the same flow: it cannot be dragged away
+// and offers no window buttons, because it closes with the style panel.
+func colourPanelButtonsHidden() -> Bool {
+    [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].allSatisfy {
+        NSColorPanel.shared.standardWindowButton($0)?.isHidden ?? true
+    }
+}
+check(!NSColorPanel.shared.isMovable && colourPanelButtonsHidden(),
+      "The shared colour panel cannot be dragged and shows no title-bar buttons")
+
 // A lightweight style panel: no title-bar button, no dragging, and it goes away
 // as soon as the user moves on.
 check(!settings.panel.styleMask.contains(.closable) &&
@@ -990,6 +1000,8 @@ func keyEvent(_ characters: String, keyCode: UInt16, modifiers: NSEvent.Modifier
 settings.show(near: toolbarRect, visibleFrames: [screen])
 check(settings.isVisible && settings.isWatchingOutsideClicks,
       "Opening the style panel starts watching for outside clicks")
+check(!NSColorPanel.shared.isMovable && colourPanelButtonsHidden(),
+      "Showing the style panel re-applies the colour panel chrome")
 settings.panel.keyDown(with: keyEvent("\u{1b}", keyCode: 53, modifiers: []))
 check(!settings.isVisible && !settings.isWatchingOutsideClicks,
       "Escape closes the style panel and stops watching")

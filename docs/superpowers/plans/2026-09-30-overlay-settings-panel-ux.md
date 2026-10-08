@@ -33,12 +33,14 @@
 - [x] 测试断言 `styleMask` 不含 `.closable`、`isMovable` 为 false、失焦（非颜色面板取得 key）时关闭、颜色面板取得 key 时不关；先红灯。
 - [x] 去掉 `.closable`、设 `isMovable = false`，实现 `windowDidResignKey` 关闭及其可测的判定函数；更新 README；复跑测试。
 
-### Task 2c: 取色面板不可拖动、无标题栏按钮（未做）
+### Task 2c: 取色面板不可拖动、无标题栏按钮
 
 **Files:** `Sources/DesktopLyrics/StyleSettingsPanel.swift`, `tests/OverlayAppearanceTests/main.swift`, `README.md`.
 
-- [ ] 测试断言 `NSColorPanel.shared` 的 `isMovable` 为 false，且 close/miniaturize/zoom 三个标准按钮都已隐藏；先红灯。
-- [ ] 在配置共享颜色面板处（`showsAlpha` 附近，`show()` 时再兜一次）设置 `isMovable = false` 并隐藏三个按钮；更新 README；复跑 Swift 测试。
+- [x] 测试断言 `NSColorPanel.shared` 的 `isMovable` 为 false，且 close/miniaturize/zoom 三个标准按钮都已隐藏；先红灯。
+- [x] 在配置共享颜色面板处（`showsAlpha` 附近，`show()` 时再兜一次）设置 `isMovable = false` 并隐藏三个按钮；更新 README；复跑 Swift 测试。
+
+实测备注：`configureSharedColorPanel()` 在 `init` 与每次 `show()`（`makeKeyAndOrderFront` 前）各调用一次，覆盖 AppKit 重新展示时恢复自身标题栏的情况；`./scripts/test-swift.sh` 全绿（红灯时先报 "The shared colour panel cannot be dragged and shows no title-bar buttons"）。
 
 ### Task 3: 颜色面板定位
 

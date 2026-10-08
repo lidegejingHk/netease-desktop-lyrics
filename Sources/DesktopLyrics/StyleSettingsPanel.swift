@@ -93,7 +93,7 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.delegate = self
-        NSColorPanel.shared.showsAlpha = false
+        configureSharedColorPanel()
 
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 310))
         panel.contentView = root
@@ -161,6 +161,8 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
             let y = min(max(desiredY, screen.minY + 8), screen.maxY - height - 8)
             panel.setFrameOrigin(NSPoint(x: x, y: y))
         }
+        // AppKit can restore the panel's own chrome when it is ordered front.
+        configureSharedColorPanel()
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
         installOutsideClickMonitors()
@@ -168,6 +170,17 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
 
     func close() { panel.close() }
     var isVisible: Bool { panel.isVisible }
+
+    /// The shared colour panel belongs to this flow: it must not be dragged away and
+    /// offers no window buttons, because it closes together with this panel.
+    private func configureSharedColorPanel() {
+        let colorPanel = NSColorPanel.shared
+        colorPanel.showsAlpha = false
+        colorPanel.isMovable = false
+        for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            colorPanel.standardWindowButton(button)?.isHidden = true
+        }
+    }
 
     private func colorPanelOrigin(for well: NSView) -> NSPoint {
         Self.colorPanelOrigin(well: panel.convertToScreen(well.convert(well.bounds, to: nil)),
