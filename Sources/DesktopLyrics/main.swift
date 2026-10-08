@@ -39,6 +39,8 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private var transportBusy = false
     private var transportAvailability = PlaybackTransport.Availability.unavailable
     private var failedTransport = PlaybackTransport.FailureLatch()
+    private var hoverTimer: Timer?
+    private var hover = OverlayHover()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -54,6 +56,9 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         refreshTransport()
         transportTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             self?.refreshTransport()
+        }
+        hoverTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
+            self?.refreshControlReveal()
         }
         if launchMode == .stdin {
             observe(FileHandle.standardInput)
@@ -77,12 +82,17 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         panel.delegate = self
         content = LyricsView(frame: frame)
         content.onDrag = { [weak self] delta in self?.moveOverlay(by: delta) }
-        content.applyStyle(styleStore.load())
         panel.contentView = content
+        content.applyStyle(styleStore.load())
+        let size = NSSize(width: frame.width,
+                          height: OverlayLayout.clampedBandHeight(content.desiredBandHeight))
+        panel.setContentSize(size)
+        content.frame = NSRect(origin: .zero, size: size)
+        content.onBandHeightChange = { [weak self] height in self?.applyBandHeight(height) }
         if let point = UserDefaults.standard.dictionary(forKey: "overlayOrigin"),
            let x = point["x"] as? Double, let y = point["y"] as? Double,
            x.isFinite, y.isFinite {
-            let proposed = NSRect(origin: NSPoint(x: x, y: y), size: frame.size)
+            let proposed = NSRect(origin: NSPoint(x: x, y: y), size: size)
             panel.setFrameOrigin(OverlayLayout.constrainedOrigin(
                 for: proposed, visibleFrames: NSScreen.screens.map(\.visibleFrame)))
         } else if let screen = NSScreen.main {
@@ -90,7 +100,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
             let target = NSRect(x: area.midX - OverlayLayout.outerSize.width / 2 +
                                    OverlayLayout.lyricInset.x,
                                 y: area.minY + 85 + OverlayLayout.lyricInset.y,
-                                width: frame.width, height: frame.height)
+                                width: size.width, height: size.height)
             panel.setFrameOrigin(OverlayLayout.constrainedOrigin(
                 for: target, visibleFrames: [area]))
         } else {
@@ -210,6 +220,33 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         rail?.follow(lyrics: panel.frame)
     }
 
+    /// The band hugs the lyric text: the top of the group stays put while only the
+    /// lower edge moves, then the whole group is re-clamped into the screens.
+    private func applyBandHeight(_ height: CGFloat) {
+        guard let panel else { return }
+        let size = NSSize(width: panel.frame.width,
+                          height: OverlayLayout.clampedBandHeight(height))
+        guard abs(size.height - panel.frame.height) > 0.5 else { return }
+        let proposed = NSRect(x: panel.frame.minX, y: panel.frame.maxY - size.height,
+                              width: size.width, height: size.height)
+        let origin = OverlayLayout.constrainedOrigin(
+            for: proposed, visibleFrames: NSScreen.screens.map(\.visibleFrame))
+        panel.setFrame(NSRect(origin: origin, size: size), display: true)
+        content?.frame = NSRect(origin: .zero, size: size)
+        syncOverlayPosition()
+    }
+
+    /// Polled rather than tracked: a locked overlay passes every mouse event
+    /// through, so tracking areas would never report the pointer.
+    private func refreshControlReveal() {
+        guard let panel, let controls, let outerFrame, showing else { return }
+        let envelope = OverlayLayout.envelope(for: panel.frame)
+        let inside = OverlayHover.inside(point: NSEvent.mouseLocation, envelope: envelope)
+        let visible = hover.update(now: ProcessInfo.processInfo.systemUptime, inside: inside)
+        controls.setControlsVisible(visible)
+        outerFrame.setTitleVisible(visible)
+    }
+
     private func syncOverlayPosition() {
         guard let panel else { return }
         updateControlsPosition()
@@ -273,6 +310,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         if !showing { settingsWindow.close() }
         UserDefaults.standard.set(showing, forKey: "overlayShowing")
         toggleItem.title = showing ? "隐藏歌词" : "显示歌词"
+        refreshControlReveal()
     }
 
     @objc private func retryTransport(_ sender: NSMenuItem) {
@@ -424,6 +462,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         NotificationCenter.default.removeObserver(self)
         shouldStop = true
         transportTimer?.invalidate()
+        hoverTimer?.invalidate()
         if let bridge, bridge.isRunning { bridge.terminate() }
     }
 }

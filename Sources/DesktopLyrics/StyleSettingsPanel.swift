@@ -69,8 +69,14 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
     private let chipWell = AnchoredColorWell(frame: .zero)
     private let backgroundSlider = NSSlider(frame: .zero)
     private let chipSlider = NSSlider(frame: .zero)
-    private let backgroundPercent = NSTextField(labelWithString: "91%")
-    private let chipPercent = NSTextField(labelWithString: "0%")
+    private let spacingSlider = NSSlider(frame: .zero)
+    private let mainFontSlider = NSSlider(frame: .zero)
+    private let detailFontSlider = NSSlider(frame: .zero)
+    private let backgroundValue = NSTextField(labelWithString: "91%")
+    private let chipValue = NSTextField(labelWithString: "0%")
+    private let spacingValue = NSTextField(labelWithString: "8 pt")
+    private let mainFontValue = NSTextField(labelWithString: "24 pt")
+    private let detailFontValue = NSTextField(labelWithString: "15 pt")
     private var style: OverlayStyle
     private var outsideClickMonitors: [Any] = []
 
@@ -81,7 +87,7 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         self.style = style
         // Titled but not closable: the panel is dismissed by losing focus, Esc,
         // Command-W or a click outside, not by a title-bar button.
-        panel = StyleSettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 310),
+        panel = StyleSettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 500),
                                     styleMask: [.titled, .utilityWindow],
                                     backing: .buffered, defer: false)
         super.init()
@@ -95,20 +101,31 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         panel.delegate = self
         configureSharedColorPanel()
 
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 310))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 500))
         panel.contentView = root
-        addLabel("浮层背景颜色", frame: NSRect(x: 22, y: 260, width: 190, height: 22), to: root)
-        addWell(backgroundWell, label: "浮层背景颜色", y: 255, to: root)
-        addLabel("歌词文字颜色", frame: NSRect(x: 22, y: 219, width: 190, height: 22), to: root)
-        addWell(textWell, label: "歌词文字颜色", y: 214, to: root)
-        addLabel("文字背底颜色", frame: NSRect(x: 22, y: 178, width: 190, height: 22), to: root)
-        addWell(chipWell, label: "文字背底颜色", y: 173, to: root)
-        addLabel("浮层背景不透明度", frame: NSRect(x: 22, y: 135, width: 190, height: 22), to: root)
-        addSlider(backgroundSlider, percent: backgroundPercent, label: "浮层背景不透明度", y: 104, to: root)
-        addLabel("文字背底不透明度", frame: NSRect(x: 22, y: 74, width: 190, height: 22), to: root)
-        addSlider(chipSlider, percent: chipPercent, label: "文字背底不透明度", y: 43, to: root)
+        addLabel("浮层背景颜色", frame: NSRect(x: 22, y: 452, width: 190, height: 22), to: root)
+        addWell(backgroundWell, label: "浮层背景颜色", y: 447, to: root)
+        addLabel("歌词文字颜色", frame: NSRect(x: 22, y: 411, width: 190, height: 22), to: root)
+        addWell(textWell, label: "歌词文字颜色", y: 406, to: root)
+        addLabel("文字背底颜色", frame: NSRect(x: 22, y: 370, width: 190, height: 22), to: root)
+        addWell(chipWell, label: "文字背底颜色", y: 365, to: root)
+        addLabel("浮层背景不透明度", frame: NSRect(x: 22, y: 327, width: 190, height: 22), to: root)
+        addSlider(backgroundSlider, value: backgroundValue, label: "浮层背景不透明度",
+                  y: 296, range: OverlayStyle.opacityRange, scale: 100, to: root)
+        addLabel("文字背底不透明度", frame: NSRect(x: 22, y: 266, width: 190, height: 22), to: root)
+        addSlider(chipSlider, value: chipValue, label: "文字背底不透明度",
+                  y: 235, range: OverlayStyle.opacityRange, scale: 100, to: root)
+        addLabel("歌词上下留白", frame: NSRect(x: 22, y: 204, width: 190, height: 22), to: root)
+        addSlider(spacingSlider, value: spacingValue, label: "歌词上下留白",
+                  y: 173, range: OverlayStyle.spacingRange, scale: 1, to: root)
+        addLabel("歌词字号", frame: NSRect(x: 22, y: 142, width: 190, height: 22), to: root)
+        addSlider(mainFontSlider, value: mainFontValue, label: "歌词字号",
+                  y: 111, range: OverlayStyle.mainFontRange, scale: 1, to: root)
+        addLabel("翻译字号", frame: NSRect(x: 22, y: 80, width: 190, height: 22), to: root)
+        addSlider(detailFontSlider, value: detailFontValue, label: "翻译字号",
+                  y: 49, range: OverlayStyle.detailFontRange, scale: 1, to: root)
         let reset = NSButton(title: "恢复默认", target: self, action: #selector(resetToDefaults))
-        reset.frame = NSRect(x: 271, y: 10, width: 88, height: 27)
+        reset.frame = NSRect(x: 271, y: 12, width: 88, height: 27)
         reset.setAccessibilityLabel("恢复默认歌词样式")
         root.addSubview(reset)
         refreshControls()
@@ -133,19 +150,21 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         root.addSubview(well)
     }
 
-    private func addSlider(_ slider: NSSlider, percent: NSTextField,
-                           label: String, y: CGFloat, to root: NSView) {
+    /// `scale` maps the stored value to slider units, 100% for the two opacities.
+    private func addSlider(_ slider: NSSlider, value: NSTextField, label: String,
+                           y: CGFloat, range: ClosedRange<Double>, scale: Double,
+                           to root: NSView) {
         slider.frame = NSRect(x: 22, y: y, width: 279, height: 26)
-        slider.minValue = 0
-        slider.maxValue = 100
+        slider.minValue = range.lowerBound * scale
+        slider.maxValue = range.upperBound * scale
         slider.isContinuous = true
         slider.target = self
-        slider.action = #selector(opacityChanged(_:))
+        slider.action = #selector(sliderChanged(_:))
         slider.setAccessibilityLabel(label)
         root.addSubview(slider)
-        percent.frame = NSRect(x: 309, y: y + 4, width: 52, height: 22)
-        percent.alignment = .right
-        root.addSubview(percent)
+        value.frame = NSRect(x: 309, y: y + 4, width: 52, height: 22)
+        value.alignment = .right
+        root.addSubview(value)
     }
 
     func show(near toolbar: NSRect, visibleFrames: [NSRect]) {
@@ -226,8 +245,14 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         chipWell.color = OverlayStyle.nsColor(style.chipRGB) ?? .black
         backgroundSlider.doubleValue = style.backgroundOpacity * 100
         chipSlider.doubleValue = style.chipOpacity * 100
-        backgroundPercent.stringValue = "\(Int(backgroundSlider.doubleValue.rounded()))%"
-        chipPercent.stringValue = "\(Int(chipSlider.doubleValue.rounded()))%"
+        spacingSlider.doubleValue = style.lyricSpacing
+        mainFontSlider.doubleValue = style.mainFontSize
+        detailFontSlider.doubleValue = style.detailFontSize
+        backgroundValue.stringValue = "\(Int((style.backgroundOpacity * 100).rounded()))%"
+        chipValue.stringValue = "\(Int((style.chipOpacity * 100).rounded()))%"
+        spacingValue.stringValue = "\(Int(style.lyricSpacing.rounded())) pt"
+        mainFontValue.stringValue = "\(Int(style.mainFontSize.rounded())) pt"
+        detailFontValue.stringValue = "\(Int(style.detailFontSize.rounded())) pt"
     }
 
     @objc private func colorChanged(_ sender: NSColorWell) {
@@ -237,9 +262,12 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         onStyleChange?(style)
     }
 
-    @objc private func opacityChanged(_ sender: NSSlider) {
+    @objc private func sliderChanged(_ sender: NSSlider) {
         if sender === backgroundSlider { style.backgroundOpacity = sender.doubleValue / 100 }
-        if sender === chipSlider { style.chipOpacity = sender.doubleValue / 100 }
+        else if sender === chipSlider { style.chipOpacity = sender.doubleValue / 100 }
+        else if sender === spacingSlider { style.lyricSpacing = sender.doubleValue.rounded() }
+        else if sender === mainFontSlider { style.mainFontSize = sender.doubleValue.rounded() }
+        else if sender === detailFontSlider { style.detailFontSize = sender.doubleValue.rounded() }
         refreshControls()
         onStyleChange?(style)
     }

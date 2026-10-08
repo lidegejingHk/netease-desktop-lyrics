@@ -12,6 +12,8 @@ final class OverlayFrame {
     /// The verified song title: one truncated line that never takes pointer input.
     private(set) var titleLabel: NSTextField = OverlayTitleLabel(labelWithString: "")
     private let background: OverlayBackgroundView
+    private var currentTitle = ""
+    private var titleRowVisible = true
     var onDrag: ((NSPoint) -> Void)? {
         didSet { background.onDrag = onDrag }
     }
@@ -55,10 +57,20 @@ final class OverlayFrame {
 
     /// Empty or whitespace-only titles hide the row instead of drawing a blank line.
     func show(title: String?) {
-        let text = (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        titleLabel.stringValue = text
-        titleLabel.setAccessibilityLabel(text)
-        titleLabel.isHidden = text.isEmpty
+        currentTitle = (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        titleLabel.stringValue = currentTitle
+        titleLabel.setAccessibilityLabel(currentTitle)
+        refreshTitleRow()
+    }
+
+    /// The title shares the tool row, so it follows the pointer as well.
+    func setTitleVisible(_ visible: Bool) {
+        titleRowVisible = visible
+        refreshTitleRow()
+    }
+
+    private func refreshTitleRow() {
+        titleLabel.isHidden = !titleRowVisible || currentTitle.isEmpty
     }
 
     private func layoutTitle(for lyrics: NSRect) {

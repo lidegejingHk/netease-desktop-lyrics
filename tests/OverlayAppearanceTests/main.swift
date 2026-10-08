@@ -97,6 +97,8 @@ check(baseline.backgroundOpacity == 0.91, "Default background opacity")
 check(baseline.textRGB == "#FFFFFF", "Default text")
 check(baseline.chipRGB == "#000000", "Default text chip")
 check(baseline.chipOpacity == 0, "Default text chip is transparent")
+check(baseline.lyricSpacing == 8 && baseline.mainFontSize == 24 && baseline.detailFontSize == 15,
+      "Default lyric spacing and font sizes")
 
 var edited = baseline
 edited.backgroundRGB = "#12ab34"
@@ -104,6 +106,9 @@ edited.backgroundOpacity = 0.25
 edited.textRGB = "#F0E0D0"
 edited.chipRGB = "#345678"
 edited.chipOpacity = 0.6
+edited.lyricSpacing = 17
+edited.mainFontSize = 30
+edited.detailFontSize = 20
 store.save(edited)
 let restored = OverlayStyleStore(defaults: defaults).load()
 check(restored.backgroundRGB == "#12AB34", "Normalized hex roundtrip")
@@ -111,6 +116,8 @@ check(restored.backgroundOpacity == 0.25, "Background opacity roundtrip")
 check(restored.textRGB == "#F0E0D0", "Text color roundtrip")
 check(restored.chipRGB == "#345678", "Chip color roundtrip")
 check(restored.chipOpacity == 0.6, "Chip opacity roundtrip")
+check(restored.lyricSpacing == 17 && restored.mainFontSize == 30 && restored.detailFontSize == 20,
+      "Spacing and font size roundtrip")
 
 check(OverlayStyle.rgbHex(NSColor(srgbRed: 1, green: 0.5, blue: 0, alpha: 0.2)) == "#FF8000", "NSColor to RGB")
 check(OverlayStyle.nsColor("#ABCDEF") != nil, "Valid RGB")
@@ -136,6 +143,16 @@ check(store.load().backgroundOpacity == baseline.backgroundOpacity, "Negative fa
 check(store.load().chipOpacity == baseline.chipOpacity, "Infinity fallback")
 defaults.set(true, forKey: "overlayStyle.backgroundOpacity")
 check(store.load().backgroundOpacity == baseline.backgroundOpacity, "Boolean opacity fallback")
+defaults.set(41.0, forKey: "overlayStyle.lyricSpacing")
+defaults.set(13.0, forKey: "overlayStyle.mainFontSize")
+defaults.set(Double.nan, forKey: "overlayStyle.detailFontSize")
+let invalidNumbers = store.load()
+check(invalidNumbers.lyricSpacing == baseline.lyricSpacing &&
+      invalidNumbers.mainFontSize == baseline.mainFontSize &&
+      invalidNumbers.detailFontSize == baseline.detailFontSize,
+      "Spacing and font sizes outside their ranges fall back instead of clamping")
+defaults.set(true, forKey: "overlayStyle.mainFontSize")
+check(store.load().mainFontSize == baseline.mainFontSize, "Boolean font size fallback")
 
 // Tool actions stay above; transport sits between lyrics and waveform on one background.
 let lyricRect = NSRect(x: 116, y: 180, width: 848, height: 126)
@@ -196,6 +213,48 @@ check(OverlayVisibility.origin(for: secondEnvelope,
                                visibleFrames: [screen, secondScreen]) == secondEnvelope.origin,
       "A framed group on another display retains its placement")
 
+// The band hugs the lyrics, so a taller or shorter region keeps the same rhythm
+// between the top row, the transport keys and the waveform.
+let tallLyricRect = NSRect(x: lyricRect.minX, y: lyricRect.minY,
+                           width: lyricRect.width, height: 180)
+let tallOuter = OverlayLayout.outerFrame(for: tallLyricRect)
+check(tallOuter == NSRect(x: 100, y: 100, width: 880, height: 310) &&
+      near(OverlayLayout.toolbarFrame(for: tallLyricRect).minY - tallLyricRect.maxY, 4) &&
+      near(tallLyricRect.minY - OverlayLayout.playbackFrame(for: tallLyricRect).maxY, 4) &&
+      near(OverlayLayout.playbackFrame(for: tallLyricRect).minY -
+           OverlayLayout.railFrame(for: tallLyricRect).maxY, 4) &&
+      near(OverlayLayout.railFrame(for: tallLyricRect).minY - tallOuter.minY, 12),
+      "A taller lyric band moves the lower edge without breaking the rhythm")
+let shortLyricRect = NSRect(x: lyricRect.minX, y: lyricRect.minY,
+                            width: lyricRect.width, height: 46)
+check(near(OverlayLayout.outerFrame(for: shortLyricRect).height, 176) &&
+      near(OverlayLayout.toolbarFrame(for: shortLyricRect).minY - shortLyricRect.maxY, 4) &&
+      OverlayLayout.outerFrame(for: shortLyricRect)
+          .contains(OverlayLayout.railFrame(for: shortLyricRect)),
+      "A short band shrinks the background without losing the lower rail")
+check(OverlayLayout.clampedBandHeight(10) == 40 && OverlayLayout.clampedBandHeight(90) == 90 &&
+      OverlayLayout.clampedBandHeight(999) == 320 &&
+      OverlayLayout.clampedBandHeight(.nan) == OverlayLayout.lyricSize.height,
+      "Measured band heights stay inside their guard rails")
+
+// The pointer alone decides whether the controls exist: the whole background is
+// the target, and a short grace period keeps a grazing pointer from flickering.
+var reveal = OverlayHover()
+check(OverlayHover.inside(point: NSPoint(x: envelope.midX, y: envelope.midY),
+                          envelope: envelope) &&
+      OverlayHover.inside(point: NSPoint(x: envelope.minX - 4, y: envelope.minY - 4),
+                          envelope: envelope) &&
+      !OverlayHover.inside(point: NSPoint(x: envelope.minX - 20, y: envelope.midY),
+                           envelope: envelope),
+      "Hover covers the complete overlay with a small forgiving margin")
+check(reveal.update(now: 0, inside: true) &&
+      reveal.update(now: 1, inside: false) &&
+      reveal.update(now: 1.2, inside: false) &&
+      !reveal.update(now: 1.5, inside: false),
+      "Leaving hides the controls only after the grace period")
+check(reveal.update(now: 2, inside: true) && reveal.controlsVisible,
+      "Re-entering the overlay reveals the controls immediately")
+
 let _ = NSApplication.shared
 let controls = OverlayControls()
 check(!controls.panel.hasShadow &&
@@ -214,6 +273,23 @@ check(controls.controlPanels.count == 7 &&
           $0.collectionBehavior.contains(.canJoinAllSpaces) && $0.animationBehavior == .none
       },
       "Only individual control icon windows can receive clicks")
+controls.setVisible(true)
+controls.setControlsVisible(false)
+check(!controls.panel.isVisible && !controls.playbackPanel.isVisible &&
+      controls.controlPanels.allSatisfy { !$0.isVisible },
+      "A pointer outside the overlay removes the tools and the transport keys")
+controls.setControlsVisible(true)
+check(controls.playbackPanel.isVisible && (4...6).allSatisfy { controls.controlPanels[$0].isVisible },
+      "Coming back reveals the transport keys again")
+controls.setCollapsed(true)
+controls.setControlsVisible(false)
+check(controls.controlPanels.allSatisfy { !$0.isVisible },
+      "A collapsed, hidden tool row also leaves only the lyric and waveform")
+controls.setControlsVisible(true)
+check(controls.controlPanels[3].isVisible && !controls.controlPanels[0].isVisible,
+      "Coming back with a collapsed row reveals the expand control only")
+controls.setCollapsed(false)
+controls.setVisible(false)
 controls.follow(overlay: lyricRect)
 check(controls.panel.frame == toolbarRect && controls.playbackPanel.frame == playbackRect &&
       (0...2).allSatisfy { controls.panel.frame.contains(controls.controlPanels[$0].frame) } &&
@@ -241,7 +317,8 @@ check([4, 5, 6].allSatisfy { (controls.controlPanels[$0].contentView! as! NSButt
       controls.controlPanels[5].contentView!.accessibilityLabel() == "暂停",
       "An available playing state exposes a pause control")
 let styledToolbar = OverlayStyle(backgroundRGB: "#112233", textRGB: "#20CF80", chipRGB: "#000000",
-                                 backgroundOpacity: 0.3, chipOpacity: 0.5)
+                                 backgroundOpacity: 0.3, chipOpacity: 0.5,
+                                 lyricSpacing: 8, mainFontSize: 24, detailFontSize: 15)
 controls.applyStyle(styledToolbar)
 check(near(controls.panel.contentView!.layer!.backgroundColor!.alpha, 0) &&
       near(controls.playbackPanel.contentView!.layer!.backgroundColor!.alpha, 0) &&
@@ -500,6 +577,10 @@ check(!outer.titleLabel.isHidden &&
 check(outer.titleLabel.accessibilityLabel() == outer.titleLabel.stringValue &&
       outer.titleLabel.stringValue.hasPrefix("很长的合成歌名"),
       "Assistive technology reads the same single-line title")
+outer.setTitleVisible(false)
+check(outer.titleLabel.isHidden, "Leaving the overlay hides the verified title")
+outer.setTitleVisible(true)
+check(!outer.titleLabel.isHidden, "Re-entering the overlay restores the verified title")
 let titlePoint = NSPoint(x: outer.titleLabel.frame.midX, y: outer.titleLabel.frame.midY)
 check(outer.titleLabel.hitTest(NSPoint(x: outer.titleLabel.bounds.midX,
                                        y: outer.titleLabel.bounds.midY)) == nil &&
@@ -507,7 +588,8 @@ check(outer.titleLabel.hitTest(NSPoint(x: outer.titleLabel.bounds.midX,
       "The title never takes over dragging from the blank background")
 let lyricView = LyricsView(frame: NSRect(origin: .zero, size: OverlayLayout.lyricSize))
 let customStyle = OverlayStyle(backgroundRGB: "#123456", textRGB: "#F0E0D0",
-                               chipRGB: "#112233", backgroundOpacity: 0.15, chipOpacity: 0.55)
+                               chipRGB: "#112233", backgroundOpacity: 0.15, chipOpacity: 0.55,
+                               lyricSpacing: 8, mainFontSize: 24, detailFontSize: 15)
 lyricView.applyStyle(customStyle)
 outer.applyStyle(customStyle)
 check(near(outer.panel.contentView!.layer!.backgroundColor!.alpha, 0.15),
@@ -592,9 +674,47 @@ check(primaryChip.isHidden && detailChip.isHidden,
       "Default text background is transparent")
 lyricView.show(primary: "等待网易云音乐…", secondary: "")
 lyricView.layout()
-check(near(primaryLabel.frame.midY, lyricView.bounds.midY) &&
+check(near(primaryLabel.frame.minY, CGFloat(OverlayStyle.defaultValue.lyricSpacing)) &&
+      near(lyricView.desiredBandHeight,
+           primaryLabel.frame.height + 2 * CGFloat(OverlayStyle.defaultValue.lyricSpacing)) &&
       detailLabel.isHidden && detailChip.isHidden,
-      "Single-line permission or waiting status is vertically centered without instructions")
+      "A lone status line hugs the bottom of a band that matches its own height")
+
+// Spacing and font sizes are settings, so the band follows them instead of a
+// constant: the same pair of lines reports a taller band after either change.
+var airyStyle = OverlayStyle.defaultValue
+airyStyle.lyricSpacing = 30
+lyricView.applyStyle(airyStyle)
+lyricView.show(primary: "合成歌词", secondary: "合成副句")
+lyricView.layout()
+let huggingHeight = primaryLabel.frame.height + detailLabel.frame.height + LyricStack.gap
+check(near(lyricView.desiredBandHeight, huggingHeight + 60) &&
+      near(primaryLabel.frame.minY - detailLabel.frame.maxY, LyricStack.gap) &&
+      near(detailLabel.frame.minY, 30),
+      "Equal spacing above and below follows the spacing setting")
+lyricView.setFrameSize(NSSize(width: lyricView.bounds.width,
+                              height: lyricView.desiredBandHeight))
+lyricView.layout()
+check(near(primaryLabel.frame.maxY, lyricView.bounds.maxY - 30),
+      "A resized band keeps the same air above the visible pair")
+var largeFontStyle = OverlayStyle.defaultValue
+largeFontStyle.mainFontSize = 34
+largeFontStyle.detailFontSize = 22
+lyricView.applyStyle(largeFontStyle)
+lyricView.show(primary: "合成歌词", secondary: "合成副句")
+lyricView.layout()
+check(near(primaryLabel.font!.pointSize, 34) && near(detailLabel.font!.pointSize, 22) &&
+      lyricView.desiredBandHeight > huggingHeight,
+      "Selected font sizes drive both the drawn text and the band height")
+var smallFontStyle = OverlayStyle.defaultValue
+smallFontStyle.mainFontSize = 14
+lyricView.applyStyle(smallFontStyle)
+lyricView.show(primary: String(repeating: "特别长的合成歌词", count: 200), secondary: "")
+lyricView.layout()
+check(near(primaryLabel.font!.pointSize, 14) && primaryLabel.stringValue.hasSuffix("…"),
+      "The shrink floor never rises above the selected font size")
+lyricView.setFrameSize(NSRect(origin: .zero, size: OverlayLayout.lyricSize).size)
+lyricView.applyStyle(.defaultValue)
 
 lyricView.applyStyle(customStyle)
 lyricView.show(primary: String(repeating: "合成歌词", count: 19),
@@ -896,9 +1016,23 @@ controls.setVisible(false)
 let settings = StyleSettingsPanel(style: .defaultValue)
 let wells = settings.panel.contentView!.subviews.compactMap { $0 as? NSColorWell }
 let sliders = settings.panel.contentView!.subviews.compactMap { $0 as? NSSlider }
-check(wells.count == 3 && sliders.count == 2, "Color and opacity controls are present")
+check(wells.count == 3 && sliders.count == 5,
+      "Colour, opacity, spacing and both font sizes are adjustable")
 check(sliders.contains(where: { $0.accessibilityLabel() == "浮层背景不透明度" }),
       "Opacity labels describe the actual slider semantics")
+let spacingSlider = sliders.first(where: { $0.accessibilityLabel() == "歌词上下留白" })!
+let mainFontSizeSlider = sliders.first(where: { $0.accessibilityLabel() == "歌词字号" })!
+let detailFontSizeSlider = sliders.first(where: { $0.accessibilityLabel() == "翻译字号" })!
+check(spacingSlider.minValue == OverlayStyle.spacingRange.lowerBound &&
+      spacingSlider.maxValue == OverlayStyle.spacingRange.upperBound &&
+      mainFontSizeSlider.minValue == OverlayStyle.mainFontRange.lowerBound &&
+      mainFontSizeSlider.maxValue == OverlayStyle.mainFontRange.upperBound &&
+      detailFontSizeSlider.minValue == OverlayStyle.detailFontRange.lowerBound &&
+      detailFontSizeSlider.maxValue == OverlayStyle.detailFontRange.upperBound,
+      "Every slider exposes the stored range it validates against")
+check((spacingSlider.doubleValue, mainFontSizeSlider.doubleValue,
+       detailFontSizeSlider.doubleValue) == (8, 24, 15),
+      "The panel opens on the same defaults the store falls back to")
 var sentStyle: OverlayStyle?
 settings.onStyleChange = { sentStyle = $0 }
 func deliverChange(_ control: NSControl) {
@@ -925,9 +1059,19 @@ let chipOpacitySlider = sliders.first(where: { $0.accessibilityLabel() == "文�
 chipOpacitySlider.doubleValue = 60
 deliverChange(chipOpacitySlider)
 check(sentStyle?.chipOpacity == 0.6, "Text backing opacity sends live update")
+spacingSlider.doubleValue = 22
+deliverChange(spacingSlider)
+check(sentStyle?.lyricSpacing == 22, "Spacing sends live update")
+mainFontSizeSlider.doubleValue = 31
+deliverChange(mainFontSizeSlider)
+check(sentStyle?.mainFontSize == 31, "Main font size sends live update")
+detailFontSizeSlider.doubleValue = 19
+deliverChange(detailFontSizeSlider)
+check(sentStyle?.detailFontSize == 19, "Secondary font size sends live update")
 settings.panel.contentView!.subviews.compactMap { $0 as? NSButton }
     .first(where: { $0.title == "恢复默认" })!.performClick(nil)
-check(sentStyle == .defaultValue, "Reset restores all original colors and opacity")
+check(sentStyle == .defaultValue,
+      "Reset restores the original colors, opacity, spacing and font sizes")
 
 // The shared colour panel keeps its own history position, so it must be placed
 // next to the swatch that opened it before it appears.

@@ -11,6 +11,7 @@ xcrun swiftc -target arm64-apple-macos13.0 -warnings-as-errors \
   "$root/Sources/DesktopLyrics/OverlayLayout.swift" \
   "$root/Sources/DesktopLyrics/OverlayFrameView.swift" \
   "$root/Sources/DesktopLyrics/OverlayVisibility.swift" \
+  "$root/Sources/DesktopLyrics/OverlayHover.swift" \
   "$root/Sources/DesktopLyrics/LyricsView.swift" \
   "$root/Sources/DesktopLyrics/WaveformView.swift" \
   "$root/Sources/DesktopLyrics/WaveformRailView.swift" \
