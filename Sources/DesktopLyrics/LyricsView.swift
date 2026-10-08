@@ -3,6 +3,10 @@ import AppKit
 /// The center region draws text and optional text-sized backings, but no separate card.
 final class LyricsView: NSView {
     var onDrag: ((NSPoint) -> Void)?
+    /// The band height that hugs the visible text with the selected spacing.
+    private(set) var desiredBandHeight: CGFloat = OverlayLayout.lyricSize.height
+    /// Called whenever the current text needs a different band height.
+    var onBandHeightChange: ((CGFloat) -> Void)?
     private let mainLabel = NSTextField(labelWithString: "正在等待网易云音乐…")
     private let detailLabel = NSTextField(labelWithString: "")
     private let mainChip = NSView()
@@ -13,6 +17,7 @@ final class LyricsView: NSView {
     private struct FitCache {
         let original: String
         let width: CGFloat
+        let size: CGFloat
         let fit: FittedLyric
     }
     private var mainFits: [FitCache] = []
@@ -60,6 +65,11 @@ final class LyricsView: NSView {
     }
 
     func applyStyle(_ newStyle: OverlayStyle) {
+        if newStyle.mainFontSize != style.mainFontSize ||
+            newStyle.detailFontSize != style.detailFontSize {
+            mainFits.removeAll()
+            detailFits.removeAll()
+        }
         style = newStyle
         let text = OverlayStyle.nsColor(newStyle.textRGB) ?? .white
         let chip = OverlayStyle.nsColor(newStyle.chipRGB) ?? .black
@@ -70,33 +80,65 @@ final class LyricsView: NSView {
         mainChip.layer?.backgroundColor = chipColor
         detailChip.layer?.backgroundColor = chipColor
         needsLayout = true
+        updateBandHeight()
     }
 
     override func layout() {
         super.layout()
-        let hasSecondary = !secondaryText.isEmpty
+        let spacing = CGFloat(style.lyricSpacing)
+        let (primary, detail) = measureBand()
+        detailLabel.isHidden = detail == nil
+        guard let detail else {
+            detailChip.isHidden = true
+            detailLabel.setAccessibilityLabel("")
+            // A lone status or waiting line hugs the band like one half of a pair.
+            place(primary, in: mainLabel, chip: mainChip, bottom: spacing,
+                  maximumHeight: LyricStack.maximumLineHeight(
+                      preferredSize: CGFloat(style.mainFontSize), weight: .semibold))
+            return
+        }
+        // One exact gap between the two visible text areas, with equal spacing
+        // above and below the pair, so the band hugs what is actually drawn.
+        place(detail, in: detailLabel, chip: detailChip, bottom: spacing,
+              maximumHeight: LyricStack.maximumLineHeight(
+                  preferredSize: CGFloat(style.detailFontSize), weight: .medium))
+        place(primary, in: mainLabel, chip: mainChip,
+              bottom: spacing + detail.height + LyricStack.gap,
+              maximumHeight: LyricStack.maximumLineHeight(
+                  preferredSize: CGFloat(style.mainFontSize), weight: .semibold))
+    }
+
+    /// The band height and the drawn text come from the same measurement, so the
+    /// enclosing panel can resize without ever clipping a visible line.
+    private func updateBandHeight() {
+        guard bounds.width > 1 else { return }
+        let (primary, detail) = measureBand()
+        let height = LyricBand.height(primaryHeight: primary.height,
+                                      detailHeight: detail?.height ?? 0,
+                                      spacing: CGFloat(style.lyricSpacing))
+        guard abs(height - desiredBandHeight) > 0.5 else { return }
+        desiredBandHeight = height
+        onBandHeightChange?(height)
+    }
+
+    /// Both `layout()` and the band height use this one measurement.
+    private func measureBand() -> (primary: MeasuredLine, detail: MeasuredLine?) {
         let inset: CGFloat = 26
         let bandWidth = max(0, bounds.width - inset * 2)
         let primary = measured(primaryText, in: mainLabel, width: bandWidth,
-                               preferredSize: 24, minimumSize: 16, weight: .semibold)
-        detailLabel.isHidden = !hasSecondary
-        guard hasSecondary else {
-            detailChip.isHidden = true
-            detailLabel.setAccessibilityLabel("")
-            // A lone status or waiting line stays vertically centered.
-            place(primary, in: mainLabel, chip: mainChip,
-                  bottom: (bounds.height - primary.height) / 2)
-            return
-        }
+                               preferredSize: CGFloat(style.mainFontSize),
+                               minimumSize: LyricStack.minimumFontSize(
+                                   preferred: CGFloat(style.mainFontSize),
+                                   floor: LyricStack.mainMinimumFontSize),
+                               weight: .semibold)
+        guard !secondaryText.isEmpty else { return (primary, nil) }
         let detail = measured(secondaryText, in: detailLabel, width: bandWidth,
-                              preferredSize: 15, minimumSize: 12, weight: .medium)
-        // One exact gap between the two visible text areas, centered as a pair, so
-        // the lines read together no matter how far the fonts had to shrink.
-        let total = primary.height + detail.height + LyricStack.gap
-        let bottom = max(LyricStack.minimumBottomInset, (bounds.height - total) / 2)
-        place(detail, in: detailLabel, chip: detailChip, bottom: bottom)
-        place(primary, in: mainLabel, chip: mainChip,
-              bottom: bottom + detail.height + LyricStack.gap)
+                              preferredSize: CGFloat(style.detailFontSize),
+                              minimumSize: LyricStack.minimumFontSize(
+                                  preferred: CGFloat(style.detailFontSize),
+                                  floor: LyricStack.detailMinimumFontSize),
+                              weight: .medium)
+        return (primary, detail)
     }
 
     private func measured(_ original: String, in label: NSTextField, width: CGFloat,
@@ -109,11 +151,12 @@ final class LyricsView: NSView {
             original: original,
             fit: fit,
             width: min(width, max(24, fit.width + 24)),
-            height: min(LyricStack.maximumLineHeight, CGFloat(fit.lineCount) * lineHeight + 4))
+            height: min(LyricStack.maximumLineHeight(preferredSize: preferredSize, weight: weight),
+                        CGFloat(fit.lineCount) * lineHeight + 4))
     }
 
     private func place(_ line: MeasuredLine, in label: NSTextField, chip: NSView,
-                       bottom: CGFloat) {
+                       bottom: CGFloat, maximumHeight: CGFloat) {
         label.frame = NSRect(x: bounds.midX - line.width / 2, y: bottom,
                              width: line.width, height: line.height)
         label.font = line.fit.font
@@ -123,7 +166,7 @@ final class LyricsView: NSView {
         chip.isHidden = line.original.isEmpty || style.chipOpacity <= 0
         if !chip.isHidden {
             // The optional backing hugs the visible text with a small padding.
-            let chipHeight = min(LyricStack.maximumLineHeight, line.height + 8)
+            let chipHeight = min(maximumHeight, line.height + 8)
             chip.frame = NSRect(x: label.frame.minX,
                                 y: bottom + (line.height - chipHeight) / 2,
                                 width: line.width, height: chipHeight)
@@ -135,11 +178,13 @@ final class LyricsView: NSView {
                             weight: NSFont.Weight) -> FittedLyric {
         let isMain = label === mainLabel
         var cache = isMain ? mainFits : detailFits
-        if cache.first?.original != original { cache.removeAll() }
+        if cache.first?.original != original || cache.first?.size != preferredSize {
+            cache.removeAll()
+        }
         if let existing = cache.first(where: { $0.width == width }) { return existing.fit }
         let fit = FittedLyric(original, width: width,
                               preferredSize: preferredSize, minimumSize: minimumSize, weight: weight)
-        cache.append(FitCache(original: original, width: width, fit: fit))
+        cache.append(FitCache(original: original, width: width, size: preferredSize, fit: fit))
         if cache.count > 2 { cache.removeFirst() }
         if isMain { mainFits = cache } else { detailFits = cache }
         return fit
@@ -149,15 +194,42 @@ final class LyricsView: NSView {
         primaryText = primary
         secondaryText = secondary
         needsLayout = true
+        updateBandHeight()
     }
 }
 
-/// Vertical rhythm of the lyric band: the two visible lines stay one close pair.
+/// Vertical rhythm of the lyric band: the two visible lines stay one close pair
+/// while the band hugs them with equal spacing above and below.
 enum LyricStack {
     static let gap: CGFloat = 12
-    static let minimumBottomInset: CGFloat = 4
-    /// The tallest visible text area: two rows at the preferred font size.
-    static let maximumLineHeight: CGFloat = 62
+    /// Shrink floors the automatic fitter uses when the user asks for more.
+    static let mainMinimumFontSize: CGFloat = 16
+    static let detailMinimumFontSize: CGFloat = 12
+
+    /// A selected size below the historical floor wins: never shrink below it.
+    static func minimumFontSize(preferred: CGFloat, floor: CGFloat) -> CGFloat {
+        min(max(1, floor), max(1, preferred))
+    }
+
+    static func lineHeight(at size: CGFloat, weight: NSFont.Weight) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: max(1, size), weight: weight)
+        return ceil(font.ascender - font.descender + font.leading)
+    }
+
+    /// The tallest visible text area: two rows at the selected font size.
+    static func maximumLineHeight(preferredSize: CGFloat, weight: NSFont.Weight) -> CGFloat {
+        2 * lineHeight(at: preferredSize, weight: weight) + 4
+    }
+}
+
+/// The lyric band's height: the visible text plus equal spacing above and below.
+enum LyricBand {
+    static func height(primaryHeight: CGFloat, detailHeight: CGFloat, spacing: CGFloat) -> CGFloat {
+        let text = detailHeight > 0
+            ? primaryHeight + detailHeight + LyricStack.gap
+            : primaryHeight
+        return text + 2 * max(0, spacing)
+    }
 }
 
 /// A fitted lyric line before it is positioned inside the band.

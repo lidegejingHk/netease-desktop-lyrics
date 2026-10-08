@@ -2,15 +2,25 @@ import AppKit
 
 /// Geometry of the single background and its transparent content zones.
 enum OverlayLayout {
-    static let outerSize = NSSize(width: 880, height: 256)
+    /// Startup band: the width never changes, while the height follows the lyrics.
     static let lyricSize = NSSize(width: 848, height: 126)
+    /// The lyric band inside the background: 16 pt sides, 80 pt below.
+    static let lyricInset = NSPoint(x: 16, y: 80)
+    /// 10 pt top inset plus the 36 pt tool row plus the 4 pt top-row rhythm.
+    static let topInset: CGFloat = 50
+    static let horizontalInset = lyricInset.x
+    static let bottomInset = lyricInset.y
+    static let outerSize = NSSize(width: lyricSize.width + 2 * horizontalInset,
+                                  height: lyricSize.height + topInset + bottomInset)
+    /// Guard rails for the band that hugs the content.
+    static let bandHeightRange: ClosedRange<CGFloat> = 40...320
+
     /// Three right-aligned tool icons: lock, style and collapse.
     static let toolbarSize = NSSize(width: 120, height: 36)
     static let collapsedToolbarSize = NSSize(width: 42, height: 36)
     static let playbackSize = NSSize(width: 132, height: 32)
     static let railSize = NSSize(width: 832, height: 28)
 
-    static let lyricInset = NSPoint(x: 16, y: 80)
     static let toolbarRightInset: CGFloat = 16
     static let toolbarTopInset: CGFloat = 10
     static let railInset = NSPoint(x: 24, y: 12)
@@ -19,9 +29,16 @@ enum OverlayLayout {
     static let titleHeight: CGFloat = 18
 
     static func outerFrame(for lyrics: NSRect) -> NSRect {
-        NSRect(x: lyrics.minX - lyricInset.x, y: lyrics.minY - lyricInset.y,
-               width: lyrics.width + outerSize.width - lyricSize.width,
-               height: lyrics.height + outerSize.height - lyricSize.height)
+        NSRect(x: lyrics.minX - horizontalInset, y: lyrics.minY - bottomInset,
+               width: lyrics.width + 2 * horizontalInset,
+               height: lyrics.height + topInset + bottomInset)
+    }
+
+    /// A measured band height, bounded so a pathological measurement cannot
+    /// shrink the overlay to nothing or grow it past every display.
+    static func clampedBandHeight(_ height: CGFloat) -> CGFloat {
+        guard height.isFinite else { return lyricSize.height }
+        return min(max(height, bandHeightRange.lowerBound), bandHeightRange.upperBound)
     }
 
     static func toolbarFrame(for lyrics: NSRect, collapsed: Bool = false) -> NSRect {

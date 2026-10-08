@@ -27,6 +27,7 @@ final class OverlayControls: NSObject {
     private let nextButton = NSButton(title: "", target: nil, action: nil)
     private(set) var isCollapsed = false
     private var isVisible = false
+    private var controlsVisible = true
     private var lastOverlay = NSRect.zero
 
     override init() {
@@ -196,8 +197,15 @@ final class OverlayControls: NSObject {
         updateVisiblePanels()
     }
 
+    /// Follows the pointer: outside the overlay only the lyric and waveform stay.
+    /// Tool and transport windows disappear together, but their state is kept.
+    func setControlsVisible(_ visible: Bool) {
+        controlsVisible = visible
+        updateVisiblePanels()
+    }
+
     private func updateVisiblePanels() {
-        if isVisible {
+        if isVisible && controlsVisible {
             panel.orderFrontRegardless()
             playbackPanel.orderFrontRegardless()
         } else {
@@ -205,7 +213,8 @@ final class OverlayControls: NSObject {
             playbackPanel.orderOut(nil)
         }
         for (index, window) in controlPanels.enumerated() {
-            let shouldShow = isVisible && (index >= 4 || (isCollapsed ? index == 3 : index < 3))
+            let shouldShow = isVisible && controlsVisible &&
+                (index >= 4 || (isCollapsed ? index == 3 : index < 3))
             if shouldShow { window.orderFrontRegardless() } else { window.orderOut(nil) }
         }
     }
