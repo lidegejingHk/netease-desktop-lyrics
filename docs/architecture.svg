@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 660" width="1180" height="660" role="img" aria-labelledby="diagram-title">
+  <title id="diagram-title">运行结构：网易云音乐客户端（只读本地日志与控制菜单）→ Rust 歌词引擎（HTTPS 歌词接口）→ Swift/AppKit 宿主（JSON 行事件流、AXPress 播放控制）</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6A7382"/>
+    </marker>
+  </defs>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif">
+
+    <!-- music.163.com API -->
+    <rect x="430" y="30" width="320" height="66" rx="14" fill="#16171A" stroke="#31353C"/>
+    <circle cx="448" cy="55" r="4" fill="#7FB4FF"/>
+    <text x="464" y="60" font-size="15" fill="#E6E8EB">music.163.com 歌词 / 歌名接口</text>
+    <text x="464" y="82" font-size="12" fill="#8B93A1">HTTPS · 数字歌曲 ID · 无账号 Cookie</text>
+
+    <!-- Client card -->
+    <rect x="36" y="170" width="300" height="300" rx="16" fill="#16171A" stroke="#31353C"/>
+    <circle cx="52" cy="207" r="4" fill="#E8B96A"/>
+    <text x="64" y="212" font-size="20" font-weight="600" fill="#F2F3F5">网易云音乐客户端</text>
+    <text x="64" y="234" font-size="12.5" fill="#8B93A1">com.netease.163music（本机 3.1.12）</text>
+    <rect x="56" y="252" width="260" height="82" rx="10" fill="#1E2024" stroke="#373C45"/>
+    <text x="74" y="284" font-size="15" fill="#E6E8EB">Local Storage · LevelDB</text>
+    <text x="74" y="308" font-size="12.5" fill="#8B93A1">只读扫描 *.log 的最新完整记录</text>
+    <rect x="56" y="348" width="260" height="82" rx="10" fill="#1E2024" stroke="#373C45"/>
+    <text x="74" y="380" font-size="15" fill="#E6E8EB">「控制」菜单（辅助功能）</text>
+    <text x="74" y="404" font-size="12.5" fill="#8B93A1">只读读取，不展开菜单</text>
+
+    <!-- Engine card -->
+    <rect x="430" y="120" width="320" height="400" rx="16" fill="#16171A" stroke="#31353C"/>
+    <circle cx="446" cy="157" r="4" fill="#7FB4FF"/>
+    <text x="458" y="162" font-size="20" font-weight="600" fill="#F2F3F5">Rust 歌词引擎</text>
+    <text x="458" y="184" font-size="12.5" fill="#8B93A1">src/ · 由宿主启动的子进程</text>
+    <g>
+      <rect x="450" y="200" width="280" height="66" rx="10" fill="#1E2024" stroke="#373C45"/>
+      <text x="466" y="228" font-size="15" fill="#E6E8EB">解析播放记录</text>
+      <text x="466" y="250" font-size="12" fill="#8B93A1">leveldb_log · reader · decoder</text>
+
+      <rect x="450" y="278" width="280" height="66" rx="10" fill="#1E2024" stroke="#373C45"/>
+      <text x="466" y="306" font-size="15" fill="#E6E8EB">交叉印证播放状态</text>
+      <text x="466" y="328" font-size="12" fill="#8B93A1">accessibility.rs（只读、不展开）</text>
+
+      <rect x="450" y="356" width="280" height="66" rx="10" fill="#1E2024" stroke="#373C45"/>
+      <text x="466" y="384" font-size="15" fill="#E6E8EB">估算播放位置</text>
+      <text x="466" y="406" font-size="12" fill="#8B93A1">timeline.rs · 暂停冻结时间轴</text>
+
+      <rect x="450" y="434" width="280" height="66" rx="10" fill="#1E2024" stroke="#373C45"/>
+      <text x="466" y="462" font-size="15" fill="#E6E8EB">拉取歌词与歌名</text>
+      <text x="466" y="484" font-size="12" fill="#8B93A1">/usr/bin/curl HTTPS · 无 Cookie</text>
+    </g>
+
+    <!-- Host card -->
+    <rect x="844" y="120" width="300" height="400" rx="16" fill="#16171A" stroke="#31353C"/>
+    <circle cx="860" cy="157" r="4" fill="#7ED3A6"/>
+    <text x="872" y="162" font-size="20" font-weight="600" fill="#F2F3F5">Swift/AppKit 宿主</text>
+    <text x="872" y="184" font-size="12.5" fill="#8B93A1">Sources/DesktopLyrics · 不激活 App</text>
+    <g>
+      <rect x="864" y="200" width="260" height="66" rx="10" fill="#1E2024" stroke="#373C45"/>
+      <text x="880" y="228" font-size="15" fill="#E6E8EB">菜单栏常驻</text>
+      <text x="880" y="250" font-size="12" fill="#8B93A1">显示/隐藏 · 锁定 · 样式 · 退出</text>
+
+      <rect x="864" y="278" width="260" height="66" rx="10" fill="#1E2024" stroke="#373C45"/>
+      <text x="880" y="306" font-size="15" fill="#E6E8EB">浮层窗口组</text>
+      <text x="880" y="328" font-size="12" fill="#8B93A1">背景 · 歌词 · 工具条 · 声浪</text>
+
+      <rect x="864" y="356" width="260" height="66" rx="10" fill="#1E2024" stroke="#373C45"/>
+      <text x="880" y="384" font-size="15" fill="#E6E8EB">播放控制</text>
+      <text x="880" y="406" font-size="12" fill="#8B93A1">PlaybackTransport · AXPress</text>
+
+      <rect x="864" y="434" width="260" height="66" rx="10" fill="#1E2024" stroke="#373C45"/>
+      <text x="880" y="462" font-size="15" fill="#E6E8EB">本地偏好</text>
+      <text x="880" y="484" font-size="12" fill="#8B93A1">UserDefaults：样式 · 位置 · 锁定</text>
+    </g>
+
+    <!-- Arrows -->
+    <line x1="336" y1="296" x2="422" y2="296" stroke="#6A7382" stroke-width="1.6" marker-end="url(#arrow)"/>
+    <text x="383" y="272" text-anchor="middle" font-size="13" fill="#C3C9D3"><tspan fill="#7FB4FF" font-weight="700">①</tspan> 只读采集</text>
+    <text x="383" y="288" text-anchor="middle" font-size="11" fill="#8B93A1">LevelDB *.log</text>
+
+    <line x1="336" y1="386" x2="422" y2="386" stroke="#6A7382" stroke-width="1.6" marker-end="url(#arrow)"/>
+    <text x="383" y="362" text-anchor="middle" font-size="13" fill="#C3C9D3"><tspan fill="#7FB4FF" font-weight="700">②</tspan> 交叉印证</text>
+    <text x="383" y="378" text-anchor="middle" font-size="11" fill="#8B93A1">「控制」菜单状态</text>
+
+    <line x1="590" y1="120" x2="590" y2="102" stroke="#6A7382" stroke-width="1.6" marker-end="url(#arrow)"/>
+    <text x="606" y="112" font-size="13" fill="#C3C9D3"><tspan fill="#7FB4FF" font-weight="700">③</tspan> HTTPS 拉取歌词与歌名</text>
+
+    <line x1="750" y1="320" x2="836" y2="320" stroke="#6A7382" stroke-width="1.6" marker-end="url(#arrow)"/>
+    <text x="797" y="292" text-anchor="middle" font-size="11.5" fill="#C3C9D3"><tspan fill="#7FB4FF" font-weight="700">④</tspan> JSON 事件流</text>
+    <text x="797" y="308" text-anchor="middle" font-size="10.5" fill="#8B93A1">stdout · 300 ms</text>
+
+    <path d="M994,520 L994,568 Q994,580 982,580 L198,580 Q186,580 186,568 L186,474" fill="none" stroke="#6A7382" stroke-width="1.6" marker-end="url(#arrow)"/>
+    <text x="590" y="562" text-anchor="middle" font-size="12.5" fill="#C3C9D3"><tspan fill="#7FB4FF" font-weight="700">⑤</tspan> AXPress：匹配唯一、启用的「控制」菜单项，不做盲点击</text>
+
+    <!-- Chips -->
+    <rect x="376" y="606" width="104" height="36" rx="18" fill="#16171A" stroke="#31353C"/>
+    <text x="428" y="629" text-anchor="middle" font-size="12.5" fill="#C3C9D3">不注入客户端</text>
+    <rect x="496" y="606" width="140" height="36" rx="18" fill="#16171A" stroke="#31353C"/>
+    <text x="566" y="629" text-anchor="middle" font-size="12.5" fill="#C3C9D3">不使用账号 Cookie</text>
+    <rect x="652" y="606" width="152" height="36" rx="18" fill="#16171A" stroke="#31353C"/>
+    <text x="728" y="629" text-anchor="middle" font-size="12.5" fill="#C3C9D3">歌词与播放历史不落盘</text>
+  </g>
+</svg>
