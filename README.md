@@ -52,6 +52,10 @@ open "dist/网易云桌面歌词.app"
 
 整体是**两个进程**：宿主 App（Swift/AppKit，`Sources/DesktopLyrics/`）负责所有窗口与鼠标交互；歌词引擎（Rust，`src/`）只读采集播放状态、请求歌词，并把结果写成 JSON 行。
 
+下图是这套结构的运行关系与五条数据通道：
+
+![运行结构：网易云客户端（只读本地日志与控制菜单）→ Rust 引擎（HTTPS 歌词）→ Swift 宿主（JSON 事件流与 AXPress 播放控制）](docs/architecture.svg)
+
 - **数据通道**。宿主把引擎作为子进程启动（`--lyrics-json --interval-ms 300`），逐行读取它的 stdout；每行是一条有界事件（`loading`／`title`／`intro`／`line`／`unavailable`），携带歌词文本、翻译、播放标记、估算位置 `position_ms`、时长 `duration_ms` 与短状态码，不含歌曲 ID。宿主限制单行 64 KiB、超限即丢弃，在主线程解码并刷新界面。`--stdin` 模式改为读合成事件，不启动引擎、也不控制真实播放器。
 - **播放状态（Rust）**。只读解析网易云 Local Storage 的 LevelDB 物理日志（`leveldb_log.rs` 校验记录，`reader.rs`／`decoder.rs` 读取与解码），再与通过辅助功能读到的网易云「控制」菜单文案和启用状态（`accessibility.rs`，只读、不展开菜单）交叉印证；`timeline.rs` 用单调时钟估算位置、暂停时冻结时间轴，`playback.rs` 只在歌曲与状态互相确认后产出观测，`held_paused=true` 表示沿用同一进程内此前核验过的观测。
 - **歌词与歌名（Rust）**。确认数字歌曲 ID 后，经系统 `/usr/bin/curl`（仅 HTTPS、不经 shell）请求 `music.163.com` 的歌词接口，`lrc.rs` 解析时间轴并配对原文与翻译；歌名走同域歌曲详情接口，限制体积与超时，ID 完全一致且标题非空才显示。不使用账号 Cookie，不落盘，缓存只活在本进程内。
