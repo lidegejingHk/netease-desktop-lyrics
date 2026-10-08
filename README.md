@@ -65,6 +65,6 @@ cargo run -- --lyrics-json --once
 
 冷启动已暂停而没有新的本地播放记录时，宁可显示“等待当前歌曲”，不猜测历史歌曲；继续播放后等待新记录。首版不支持字级卡拉 OK、离线歌词、自动补第三方歌词源。验证记录和未覆盖场景见 [`docs/validation-checklist.md`](docs/validation-checklist.md)。## 许可
 
-本项目以 [MIT 许可](LICENSE) 发布。
+本项目为**专有软件**，保留所有权利，不再以任何开源许可发布；未经著作权人事先书面许可，不得使用、复制、修改、发布、分发、再许可或销售本软件或其源代码的任何部分。
 
-灵感来自 [NeteaseMusicLrcHelper](https://github.com/Lensual/NeteaseMusicLrcHelper)，格式参考 [CloudLyrics-for-macOS](https://github.com/hellomyonly55/CloudLyrics-for-macOS)（MIT）；辅助功能思路参考 [CloudMusicFocus](https://github.com/eruimisshy/CloudMusicFocus)，没有复制其 GPL 源码。
+第三方致谢：灵感来自 [NeteaseMusicLrcHelper](https://github.com/Lensual/NeteaseMusicLrcHelper)，本地存储格式参考 [CloudLyrics-for-macOS](https://github.com/hellomyonly55/CloudLyrics-for-macOS)（MIT，引用其机制并保留其许可致谢），辅助功能思路参考 [CloudMusicFocus](https://github.com/eruimisshy/CloudMusicFocus)（GPL，没有复制其源码）。本项目自身的代码不因上述致谢而变为开源。
