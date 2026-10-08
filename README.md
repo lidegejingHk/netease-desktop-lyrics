@@ -76,6 +76,6 @@ cargo run -- --lyrics-json --once
 
 ## 许可
 
-本项目为**专有软件**，保留所有权利，不再以任何开源许可发布；未经著作权人事先书面许可，不得使用、复制、修改、发布、分发、再许可或销售本软件或其源代码的任何部分。
+本项目以 [MIT 许可](LICENSE) 发布：可自由使用、复制、修改、分发、再许可或销售，只需保留版权与许可声明。本项目为非官方第三方工具，与网易公司无关。
 
-第三方致谢：灵感来自 [NeteaseMusicLrcHelper](https://github.com/Lensual/NeteaseMusicLrcHelper)，本地存储格式参考 [CloudLyrics-for-macOS](https://github.com/hellomyonly55/CloudLyrics-for-macOS)（MIT，引用其机制并保留其许可致谢），辅助功能思路参考 [CloudMusicFocus](https://github.com/eruimisshy/CloudMusicFocus)（GPL，没有复制其源码）。本项目自身的代码不因上述致谢而变为开源。
+第三方致谢：灵感来自 [NeteaseMusicLrcHelper](https://github.com/Lensual/NeteaseMusicLrcHelper)，本地存储格式参考 [CloudLyrics-for-macOS](https://github.com/hellomyonly55/CloudLyrics-for-macOS)（MIT，引用其机制并保留其许可致谢），辅助功能思路参考 [CloudMusicFocus](https://github.com/eruimisshy/CloudMusicFocus)（GPL，没有复制其源码）。
