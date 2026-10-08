@@ -1,0 +1,484 @@
+<!--
+  网易云桌面歌词 · 概念演示动画（源文件）
+  - 纯静态 HTML、无外部依赖；浏览器直接打开即循环播放
+  - 录制 1920x1080：用 Playwright recordVideo 抓 .mp4 后导出
+      ffmpeg -i demo.mp4 -vf "fps=12,scale=800:-1:flags=lanczos,palettegen=stats_mode=diff" pal.png
+      ffmpeg -i demo.mp4 -i pal.png -lavfi "fps=12,scale=800:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5" demo.gif
+  - 时间轴共 23.0s；调试可用 window.__hold(t) 把画面定格在第 t 秒
+-->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>网易云桌面歌词 · 演示动画</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#0B0C0F}
+  body{font-family:"PingFang SC",-apple-system,BlinkMacSystemFont,"Helvetica Neue","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+  #stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0B0C0F}
+  .win{border-radius:12px;overflow:hidden;box-shadow:0 34px 90px rgba(0,0,0,.6),0 6px 22px rgba(0,0,0,.4)}
+  .win .body{position:absolute;left:0;top:0;transform-origin:0 0}
+
+  /* ── 桌面 ─────────────────────────────── */
+  #wallpaper{position:absolute;z-index:1;inset:0;opacity:0;
+    background:
+      radial-gradient(1300px 780px at 74% 14%,#1F2735 0%,rgba(31,39,53,0) 64%),
+      radial-gradient(1050px 700px at 14% 90%,#161D29 0%,rgba(22,29,41,0) 58%),
+      linear-gradient(158deg,#14171E 0%,#0C0E12 100%)}
+  #menubar{position:absolute;z-index:40;left:0;top:0;right:0;height:42px;display:flex;align-items:center;justify-content:space-between;
+    padding:0 26px;color:#B9BEC8;font-size:17px;background:rgba(15,17,21,.62);
+    border-bottom:1px solid rgba(255,255,255,.06);opacity:0}
+  #menubar .left,#menubar .right{display:flex;align-items:center;gap:24px}
+  #menubar .dim{color:#8B919C}
+  #menubar .note{color:#D8DBE2}
+  #menubar .batt{width:26px;height:13px;border:1.5px solid #9BA1AC;border-radius:3.5px;position:relative}
+  #menubar .batt::after{content:"";position:absolute;right:3px;top:2.6px;bottom:2.6px;left:8px;background:#B9BEC8;border-radius:1.5px}
+
+  /* ── 播放器窗口 ───────────────────────── */
+  #appwin{position:absolute;z-index:20;background:#1B1C20}
+  #appwin .titlebar{position:relative;height:44px;display:flex;align-items:center;background:#232428;border-bottom:1px solid rgba(255,255,255,.05)}
+  .lights{display:flex;gap:10px;margin-left:18px}
+  .lights i{width:13px;height:13px;border-radius:50%;display:block}
+  .lights i:nth-child(1){background:#FF5F57}.lights i:nth-child(2){background:#FEBC2E}.lights i:nth-child(3){background:#28C840}
+  #appwin .title{position:absolute;left:0;right:0;text-align:center;color:#C9CCD2;font-size:17px;pointer-events:none}
+  .appbody{position:absolute;left:0;top:0;width:880px;height:540px;transform-origin:0 0;background:#1B1C20}
+  .art{position:absolute;left:40px;top:86px;width:186px;height:186px;border-radius:12px;
+    background:linear-gradient(140deg,#586A8C 0%,#2E3A52 55%,#1C2434 100%);position:relative}
+  .art::after{content:"♪";position:absolute;right:16px;bottom:8px;font-size:44px;color:rgba(255,255,255,.5)}
+  .songtitle{position:absolute;left:258px;top:104px;font-size:34px;font-weight:600;color:#ECEDEF}
+  .artist{position:absolute;left:260px;top:152px;font-size:22px;color:#8A8F98}
+  .pbarr{position:absolute;left:258px;top:214px;width:560px;height:6px;border-radius:3px;background:#33353B}
+  .pbarr i{position:absolute;left:0;top:0;bottom:0;width:42%;border-radius:3px;background:#C9CCD2}
+  .times{position:absolute;left:258px;top:232px;width:560px;display:flex;justify-content:space-between;font-size:15px;color:#7A7F88}
+  .controls{position:absolute;left:0;right:0;top:300px;display:flex;justify-content:center;align-items:center;gap:46px}
+  .ctl{width:44px;height:44px;color:#B9BEC8;font-size:34px;line-height:44px;text-align:center}
+  .ctl.main{width:58px;height:58px;border-radius:50%;background:#2C2E34;font-size:30px;line-height:58px;color:#F1F2F4}
+  #pillFav{position:absolute;left:40px;top:322px;width:172px;height:52px;border-radius:26px;
+    background:#26272C;display:flex;align-items:center;justify-content:center;gap:10px;
+    color:#B9BEC8;font-size:19px;transition:none}
+  #pillHeart{font-size:22px;color:#B9BEC8;display:block}
+
+  /* ── 浏览器窗口 ───────────────────────── */
+  #browser{position:absolute;z-index:22;background:#F5F6F8}
+  #browser .titlebar{position:relative;height:46px;display:flex;align-items:center;background:#E9EAEE;border-bottom:1px solid rgba(0,0,0,.06)}
+  .browserbody{position:absolute;left:0;top:0;width:760px;height:480px;transform-origin:0 0}
+  .addr{position:absolute;left:26px;right:26px;top:64px;height:44px;border-radius:10px;background:#FFFFFF;border:1px solid #E0E2E8;
+    display:flex;align-items:center;padding:0 18px;color:#A6ABB4;font-size:17px;gap:10px}
+  .sk-row{position:absolute;left:26px;right:26px;border-radius:8px;background:#E3E5EA}
+  .sk-hero{position:absolute;left:26px;right:26px;top:136px;height:150px;border-radius:12px;
+    background:linear-gradient(120deg,#DFE2E8,#EDEFF3)}
+
+  /* ── 飞过的小窗 ───────────────────────── */
+  #flyer{position:absolute;z-index:24;background:#232428;border-radius:10px;overflow:hidden;opacity:0;
+    box-shadow:0 26px 70px rgba(0,0,0,.5)}
+
+  /* ── 官方歌词条（小角色） ──────────────── */
+  #official{position:absolute;z-index:5;width:430px;height:64px;border-radius:16px;background:#E9EAEE;
+    box-shadow:0 18px 44px rgba(0,0,0,.5);display:flex;align-items:center;padding:0 22px;gap:14px;opacity:0}
+  #obarFace{width:34px;height:34px;flex:none}
+  #obarText{font-size:21px;color:#4E5057;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #obarChip{position:absolute;left:14px;top:-36px;font-size:16px;color:#C6CAD2;background:rgba(24,26,31,.85);
+    border:1px solid rgba(255,255,255,.09);border-radius:9px;padding:5px 12px;white-space:nowrap}
+  .bubble{position:absolute;z-index:80;font-size:19px;padding:9px 16px;border-radius:13px;white-space:nowrap;opacity:0;transform-origin:0% 100%}
+  #obarBubble{background:#FBFBFD;color:#3A3C43;box-shadow:0 14px 34px rgba(0,0,0,.45)}
+  #obarBubble.dark{background:rgba(24,26,31,.95);color:#EDEFF3;border:1px solid rgba(255,255,255,.14)}
+  #obarThumb{position:absolute;z-index:80;font-size:36px;opacity:0}
+
+  /* ── 本项目浮层 ───────────────────────── */
+  #overlay{position:absolute;width:760px;height:150px;border-radius:22px;background:rgba(19,19,19,.93);
+    border:1px solid rgba(255,255,255,.07);box-shadow:0 30px 80px rgba(0,0,0,.62);opacity:0;z-index:60}
+  #ovTitle{position:absolute;left:30px;top:18px;font-size:19px;color:#C9CCD2;display:flex;align-items:center;gap:9px}
+  #ovTitle i{width:9px;height:9px;border-radius:50%;background:#8FB4FF;display:block}
+  #ovLock{position:absolute;right:28px;top:14px;width:30px;height:30px;color:#C9CCD2}
+  #ovLockRing{position:absolute;right:20px;top:8px;width:46px;height:46px;border-radius:12px;border:1.5px solid rgba(143,180,255,0);}
+  #ovLyric{position:absolute;left:0;right:0;top:44px;text-align:center;font-size:39px;font-weight:600;color:#F5F6F8;letter-spacing:.5px}
+  #ovTrans{position:absolute;left:0;right:0;top:96px;text-align:center;font-size:20px;color:#9AA0AB}
+  #ovWave{position:absolute;left:44px;right:44px;bottom:14px;height:16px;display:flex;align-items:flex-end;gap:6px}
+  #ovWave i{flex:none;width:6px;border-radius:3px;background:#E8EAEE;height:4px}
+  #ovXray{position:absolute;inset:-1px;border-radius:23px;border:2px dashed rgba(143,180,255,.9);opacity:0}
+  #ovBubble{background:rgba(24,26,31,.95);color:#EDEFF3;border:1px solid rgba(255,255,255,.12);box-shadow:0 14px 34px rgba(0,0,0,.5);z-index:80}
+  #ovTag{position:absolute;font-size:18px;padding:7px 14px;border-radius:11px;background:#8FB4FF;color:#0C1120;font-weight:600;opacity:0;z-index:80}
+
+  /* ── 字幕 / 压暗 / 结尾卡 ───────────────── */
+  #capScrim{position:absolute;left:0;top:0;right:0;height:250px;z-index:69;pointer-events:none;
+    background:linear-gradient(rgba(5,6,8,.5),rgba(5,6,8,0));opacity:.55}
+  #caption{position:absolute;left:0;right:0;top:92px;text-align:center;z-index:70;opacity:0}
+  #capMain{font-size:47px;font-weight:700;color:#F7F8FA;text-shadow:0 8px 34px rgba(0,0,0,.65)}
+  #capSub{font-size:26px;color:#A8AEBA;margin-top:12px;text-shadow:0 6px 24px rgba(0,0,0,.6)}
+  #dim{position:absolute;inset:0;background:rgba(7,8,10,.9);opacity:0;z-index:50;pointer-events:none}
+  #endcard{position:absolute;left:0;right:0;top:546px;text-align:center;z-index:65;opacity:0}
+  #ecName{font-size:64px;font-weight:700;color:#F4F5F7;letter-spacing:1px}
+  #ecSub{font-size:27px;color:#A7ADB8;margin-top:20px}
+  #ecChips{margin-top:30px;display:flex;justify-content:center;gap:16px}
+  #ecChips span{font-size:22px;color:#D6DAE1;border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:11px 24px;background:rgba(255,255,255,.04)}
+  #ecUrl{margin-top:34px;font-size:29px;color:#8FB4FF;letter-spacing:.6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  /* ── 光标 / 点击涟漪 ───────────────────── */
+  #cursor{position:absolute;left:0;top:0;z-index:90;width:34px;height:40px;opacity:0;filter:drop-shadow(0 6px 14px rgba(0,0,0,.55))}
+  .ripple{position:absolute;z-index:91;border-radius:50%;border:3px solid rgba(255,255,255,.85);opacity:0}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="wallpaper"></div>
+  <div id="menubar">
+    <div class="left"><span class="dim">访达</span><span class="dim">文件</span><span class="dim">编辑</span><span class="dim">显示</span></div>
+    <div class="right"><span class="note">♪</span><span class="batt"></span><span>22:31</span></div>
+  </div>
+
+  <div id="appwin" class="win" style="left:520px;top:300px;width:880px;height:540px">
+    <div class="appbody" id="appbody">
+      <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><div class="title">网易云音乐</div></div>
+      <div class="art"></div>
+      <div class="songtitle">晴天</div>
+      <div class="artist">周杰伦 · 叶惠美</div>
+      <div class="pbarr"><i></i></div>
+      <div class="times"><span>01:12</span><span>04:29</span></div>
+      <div class="controls"><span class="ctl">⏮</span><span class="ctl main">⏸</span><span class="ctl">⏭</span></div>
+      <div id="pillFav"><span id="pillHeart">♡</span><span id="pillText">喜欢</span></div>
+    </div>
+  </div>
+
+  <div id="browser" class="win" style="left:2160px;top:520px;width:760px;height:480px">
+    <div class="browserbody" id="browserbody">
+      <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div></div>
+      <div class="addr">🔍 搜索或输入网址</div>
+      <div class="sk-hero"></div>
+      <div class="sk-row" style="top:312px;height:24px"></div>
+      <div class="sk-row" style="top:352px;height:24px;right:320px"></div>
+      <div class="sk-row" style="top:392px;height:24px;right:200px"></div>
+    </div>
+  </div>
+
+  <div id="flyer" style="left:2050px;top:150px;width:460px;height:300px">
+    <div style="height:40px;background:#2A2C31"></div>
+    <div style="padding:26px"><div style="height:16px;border-radius:8px;background:#33353B;width:70%"></div>
+    <div style="height:16px;border-radius:8px;background:#2E3036;width:45%;margin-top:16px"></div></div>
+  </div>
+
+  <div id="official">
+    <span id="obarChip">网易云 · 官方桌面歌词</span>
+    <svg id="obarFace" viewBox="0 0 34 34"></svg>
+    <span id="obarText">故事的小黄花 从出生那年就飘着</span>
+  </div>
+
+  <div id="overlay">
+    <div id="ovTitle"><i></i>晴天</div>
+    <svg id="ovLock" viewBox="0 0 30 30">
+      <rect x="6" y="13" width="18" height="13" rx="3.5" fill="none" stroke="currentColor" stroke-width="2.2"/>
+      <path id="ovShackle" d="M10 13 v-3.2 a5 5 0 0 1 10 0 v3.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="15" cy="19.4" r="1.9" fill="currentColor"/>
+    </svg>
+    <div id="ovLockRing"></div>
+    <div id="ovLyric">从前从前 有个人爱你很久</div>
+    <div id="ovTrans">Long long ago, someone loved you for so long</div>
+    <div id="ovWave"></div>
+    <div id="ovXray"></div>
+  </div>
+
+  <div id="dim"></div>
+  <div id="endcard">
+    <div id="ecName">网易云桌面歌词</div>
+    <div id="ecSub">Rust 引擎 × Swift/AppKit 浮层 · 只读本地数据 · 不注入 · 无账号 Cookie</div>
+    <div id="ecChips"><span>置顶浮层</span><span>锁定 · 点击穿透</span><span>双语歌词</span><span>样式可调</span></div>
+    <div id="ecUrl">github.com/lidegejingHk/netease-desktop-lyrics</div>
+  </div>
+
+  <div id="capScrim"></div>
+  <div id="caption"><div id="capMain"></div><div id="capSub"></div></div>
+
+  <span id="obarBubble" class="bubble"></span>
+  <span id="obarThumb">👍</span>
+  <span id="ovBubble" class="bubble"></span>
+  <span id="ovTag">点击穿透</span>
+  <div id="cursor">
+    <svg viewBox="0 0 34 40"><path d="M4 2 L30 21 L18.5 22.6 L25 37 L19.4 39.6 L13.2 25 L4.6 32 Z"
+      fill="#111318" stroke="#FFFFFF" stroke-width="2.4" stroke-linejoin="round"/></svg>
+  </div>
+  <div id="r0" class="ripple"></div><div id="r1" class="ripple"></div>
+  <div id="r2" class="ripple"></div><div id="r3" class="ripple"></div>
+</div>
+
+<script>
+const T_END = 23.0;
+const $ = id => document.getElementById(id);
+const el = {
+  wall:$('wallpaper'), menu:$('menubar'), app:$('appwin'), appbody:$('appbody'),
+  browser:$('browser'), browserbody:$('browserbody'), flyer:$('flyer'),
+  official:$('official'), obarFace:$('obarFace'), obarText:$('obarText'), obarBubble:$('obarBubble'),
+  obarChip:$('obarChip'), obarThumb:$('obarThumb'),
+  ov:$('overlay'), ovShackle:$('ovShackle'), ovLockRing:$('ovLockRing'), ovLyric:$('ovLyric'),
+  ovTrans:$('ovTrans'), ovWave:$('ovWave'), ovXray:$('ovXray'), ovBubble:$('ovBubble'), ovTag:$('ovTag'),
+  dim:$('dim'), end:$('endcard'), cap:$('caption'), capMain:$('capMain'), capSub:$('capSub'),
+  cursor:$('cursor'), pillHeart:$('pillHeart'), pillText:$('pillText'), pillFav:$('pillFav')
+};
+
+/* ── helpers ─────────────────────────────── */
+const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,p)=>a+(b-a)*p;
+const E={
+  lin:p=>p,
+  outCubic:p=>1-Math.pow(1-p,3),
+  inCubic:p=>p*p*p,
+  outQuint:p=>1-Math.pow(1-p,5),
+  inOut:p=>p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2,
+  inOutSine:p=>-(Math.cos(Math.PI*p)-1)/2,
+  outBack:(p,k=1.35)=>1+(k+1)*Math.pow(p-1,3)+k*Math.pow(p-1,2)
+};
+const seg=(t,a,b,e=E.outCubic)=>{ if(t<=a)return 0; if(t>=b)return 1; return e((t-a)/(b-a)); };
+
+/* ── 字幕脚本 ────────────────────────────── */
+const CAPS=[
+  {a:1.0, b:4.05, m:'网易云自带的桌面歌词', s:'平时挺乖，就是有点……脆弱'},
+  {a:4.15,b:6.25, m:'痛点 ①：窗口一放大，它没了', s:'想边看歌词边放大窗口？官方版本不答应'},
+  {a:6.35,b:7.75, m:'痛点 ②：也不能固定', s:'随便一个窗口，都能把它盖住'},
+  {a:7.9, b:8.85, m:'所以，做了这个 →', s:''},
+  {a:9.05,b:10.75,m:'一块独立的歌词浮层', s:'不注入客户端，只读播放状态'},
+  {a:10.85,b:12.7,m:'随便拖，位置你说了算', s:''},
+  {a:12.85,b:15.05,m:'锁定：固定在桌面', s:'拖动结束，点一下右上角的小锁'},
+  {a:15.2, b:16.7, m:'穿透：点它 = 点它下面的东西', s:'锁定的浮层不拦截鼠标'},
+  {a:16.85,b:19.45,m:'窗口随便放大，歌词一直在', s:'因为它永远浮在最上层'}
+];
+
+/* ── 脸谱 ────────────────────────────────── */
+const FACE={
+  happy:'<circle cx="11" cy="14" r="2.6" fill="#4E5057"/><circle cx="23" cy="14" r="2.6" fill="#4E5057"/><path d="M10.5 21 Q17 26.5 23.5 21" stroke="#4E5057" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
+  curious:'<circle cx="11" cy="14" r="2.4" fill="#4E5057"/><circle cx="23" cy="14" r="2.4" fill="#4E5057"/><circle cx="17" cy="22" r="2.2" fill="none" stroke="#4E5057" stroke-width="2"/>',
+  panic:'<path d="M8 11 L14 17 M14 11 L8 17" stroke="#4E5057" stroke-width="2.3" stroke-linecap="round"/><path d="M20 11 L26 17 M26 11 L20 17" stroke="#4E5057" stroke-width="2.3" stroke-linecap="round"/><path d="M11 24 Q17 20.5 23 24" stroke="#4E5057" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
+  sad:'<path d="M8.5 13.5 L13.5 13.5" stroke="#4E5057" stroke-width="2.3" stroke-linecap="round"/><path d="M20.5 13.5 L25.5 13.5" stroke="#4E5057" stroke-width="2.3" stroke-linecap="round"/><path d="M11 24.5 Q17 20 23 24.5" stroke="#4E5057" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
+  awe:'<circle cx="11" cy="14" r="3.1" fill="#4E5057"/><circle cx="23" cy="14" r="3.1" fill="#4E5057"/><circle cx="17" cy="22.6" r="2.4" fill="none" stroke="#4E5057" stroke-width="2"/>',
+  cool:'<path d="M8.5 17.5 Q11 13.5 13.5 17.5" stroke="#4E5057" stroke-width="2.3" fill="none" stroke-linecap="round"/><path d="M20.5 17.5 Q23 13.5 25.5 17.5" stroke="#4E5057" stroke-width="2.3" fill="none" stroke-linecap="round"/><path d="M11 23 Q17 27.5 23 23" stroke="#4E5057" stroke-width="2.2" fill="none" stroke-linecap="round"/>'
+};
+let lastFace='';
+function setFace(m){ if(m!==lastFace){ el.obarFace.innerHTML=FACE[m]; lastFace=m; } }
+
+/* ── 波形 ────────────────────────────────── */
+const WAVE_N=56, waveBars=[];
+for(let i=0;i<WAVE_N;i++){ const b=document.createElement('i'); el.ovWave.appendChild(b); waveBars.push(b); }
+
+/* ── 涟漪 ────────────────────────────────── */
+const CLICKS=[{t:2.95,x:990,y:322},{t:3.15,x:996,y:326},{t:13.2,x:850,y:678},{t:15.45,x:356,y:718}];
+const ripples=[$('r0'),$('r1'),$('r2'),$('r3')];
+
+/* ── 逐帧绘制（纯函数 of t） ─────────────── */
+function draw(t){
+  /* 桌面 */
+  const wallP=seg(t,0.15,0.9);
+  el.wall.style.opacity=wallP;
+  el.menu.style.opacity=seg(t,0.3,1.0)*0.95;
+
+  /* 播放器窗口 */
+  {
+    const easeIn=seg(t,0.7,1.55,E.outBack);
+    const zoomUp=seg(t,3.3,4.05,E.outBack,1.0);
+    const zoomDn=seg(t,5.0,5.72,E.outBack);
+    const zoom2=seg(t,16.7,17.3,E.outBack);
+    const m=Math.max(zoomUp*(1-zoomDn), zoom2);
+    const x=lerp(520,128,m), y=lerp(300,64,m);
+    const w=lerp(880,1664,m), h=lerp(540,952,m);
+    const fadeEnd=1-seg(t,19.6,20.1);
+    el.app.style.left=x+'px'; el.app.style.top=(y+lerp(96,0,easeIn))+'px';
+    el.app.style.width=w+'px'; el.app.style.height=h+'px';
+    el.app.style.opacity=(seg(t,0.7,1.35)*fadeEnd).toFixed(3);
+    el.appbody.style.transform='scale('+(w/880).toFixed(4)+')';
+    /* 喜欢按钮点击穿透反馈 */
+    const hp=seg(t,15.45,15.62,E.outQuint);
+    const hs=1+0.22*(1-seg(t,15.45,15.85,E.outCubic));
+    el.pillHeart.style.color=hp>0?'#FF6B81':'#B9BEC8';
+    el.pillText.style.color=hp>0?'#FF6B81':'#B9BEC8';
+    el.pillText.textContent=hp>0?'已收藏':'喜欢';
+    el.pillFav.style.transform='scale('+(hp>0?hs:1).toFixed(3)+')';
+  }
+
+  /* 浏览器窗口 */
+  {
+    let x=2160,y=520,w=760,h=480,op=0;
+    const fadeEnd=1-seg(t,19.6,20.1);
+    if(t>=6.1&&t<8.8){ const p=seg(t,6.1,6.9,E.outCubic); x=lerp(2160,1240,p); op=p; }
+    else if(t>=8.8&&t<9.6){ const p=seg(t,8.8,9.6,E.outCubic); x=lerp(1240,2160,p); op=1-p; }
+    else if(t>=16.7){ const p=seg(t,16.7,17.4,E.outBack); x=lerp(2160,320,p); y=lerp(520,190,p); w=lerp(760,1560,p); h=lerp(480,820,p); op=1; }
+    el.browser.style.left=x+'px'; el.browser.style.top=y+'px';
+    el.browser.style.width=w+'px'; el.browser.style.height=h+'px';
+    el.browser.style.opacity=(op*fadeEnd).toFixed(3);
+    el.browserbody.style.transform='scale('+(w/760).toFixed(4)+')';
+  }
+
+  /* 飞过的小窗 */
+  {
+    const p=seg(t,17.55,18.6,E.lin);
+    const op=seg(t,17.55,17.75)*(1-seg(t,18.4,18.6));
+    el.flyer.style.left=lerp(2050,-560,p)+'px';
+    el.flyer.style.top=(150+70*Math.sin(p*Math.PI))+'px';
+    el.flyer.style.transform='rotate('+lerp(4,-5,p)+'deg)';
+    el.flyer.style.opacity=(op*(1-seg(t,19.6,20.1))).toFixed(3);
+  }
+
+  /* 官方歌词条 */
+  {
+    const fadeEnd=1-seg(t,19.6,20.1);
+    let x=230,y=900,sc=1,op=0,sq=1,rot=0,face='happy',bub='',bubOp=0,thumbOp=0,bubDark=0;
+    if(t<1.45){ op=0; }
+    else if(t<3.55){ const p=seg(t,1.45,2.35,E.outBack); sc=p; op=seg(t,1.45,2.0); y+=Math.sin(t*3.1)*2.2; face='happy'; }
+    else if(t<4.85){
+      if(t<4.15){ face='panic'; op=1; x+=Math.sin(t*46)*2.6; }
+      else { const p=seg(t,4.15,4.85,E.inCubic); x=lerp(230,330,p); y=lerp(900,1105,p); rot=lerp(0,15,p); op=1; face='panic'; }
+      bub='我先走了！'; bubOp=seg(t,3.95,4.12)*(1-seg(t,4.5,4.7));
+    }
+    else if(t<5.5){ op=0; }
+    else if(t<6.55){ const p=seg(t,5.5,6.1,E.outCubic); x=lerp(2120,1380,p); y=920; op=p; face='curious'; }
+    else if(t<7.75){
+      x=1380; y=920; op=1;
+      sq=1-0.2*seg(t,6.6,6.85)*(1-seg(t,6.95,7.2)); face=t>6.7?'sad':'curious';
+      bub='好挤…'; bubDark=1; bubOp=seg(t,6.9,7.06)*(1-seg(t,7.42,7.62));
+      if(t>6.95){ const p=seg(t,6.95,7.6,E.inCubic); y=lerp(920,1090,p); x=lerp(1380,1450,p); op=1-seg(t,7.35,7.72); } }
+    else if(t<18.3){ op=0; }
+    else if(t<19.45){ const p=seg(t,18.3,18.9,E.outBack); y=lerp(1130,1016,p); x=140; op=seg(t,18.3,18.7); face='awe'; bub='……服了'; bubDark=1; bubOp=seg(t,18.55,18.8); }
+    else if(t<19.7){ op=1-seg(t,19.45,19.7); face='awe'; x=140; y=1016; }
+    else if(t<21.4){ op=0; }
+    else { const p=seg(t,21.4,21.95,E.outBack); y=lerp(1120,880,p); x=1420; op=seg(t,21.4,21.8); face='cool'; bub='学到了'; bubOp=seg(t,21.7,21.95); thumbOp=seg(t,21.85,22.1); }
+    el.official.style.left=x+'px'; el.official.style.top=y+'px';
+    el.official.style.opacity=(op*fadeEnd).toFixed(3);
+    el.official.style.transform='rotate('+rot+'deg) scale('+sc+','+(sc*sq)+')';
+    setFace(face);
+    el.official.style.zIndex = (t>=21.3 ? '55' : '5');
+    el.obarBubble.className = bubDark ? 'bubble dark' : 'bubble';
+    el.obarBubble.textContent=bub;
+    el.obarBubble.style.opacity=bubOp.toFixed(3);
+    el.obarBubble.style.left=(x+28)+'px'; el.obarBubble.style.top=(y-58)+'px';
+    el.obarThumb.style.opacity=thumbOp.toFixed(3);
+    el.obarThumb.style.left=(x+430-58)+'px'; el.obarThumb.style.top=(y+13)+'px';
+  }
+
+  /* 本项目浮层 */
+  {
+    /* 位置：入场 → 拖动（跟随光标）→ 收尾滑到结尾卡 */
+    const dp=seg(t,10.9,12.2,E.inOutSine);
+    const cursorDragX=lerp(1140,530,dp), cursorDragY=lerp(765,715,dp)-26*Math.sin(dp*Math.PI);
+    let x=760,y=690;
+    if(t<8.6){ x=760; y=1150; }
+    else if(t<10.9){ x=760; y=lerp(1150,690,seg(t,8.6,9.5,E.outBack)); }
+    else if(t<12.2){ x=cursorDragX-380; y=cursorDragY-75; }
+    else if(t<19.75){ x=150; y=640+10*(1-seg(t,12.2,12.75,E.outCubic))*Math.sin((t-12.2)*20); }
+    else { const p=seg(t,19.75,20.45,E.inOut); x=lerp(150,580,p); y=lerp(640,300,p); }
+    /* 缩放：入场弹性 + 落地轻晃 + 锁定时小顿 + 大乱斗时得意的弹跳 */
+    let sc=1;
+    const land=seg(t,8.6,9.5,E.outBack);
+    if(t>=9.3&&t<9.9){ sc=1+0.03*(1-seg(t,9.3,9.9,E.outCubic))*Math.sin((t-9.3)*26); }
+    const lockP=seg(t,13.2,13.58,E.outBack);
+    if(t>=13.55&&t<14.1){ sc*=1+0.035*(1-seg(t,13.55,14.1,E.outCubic))*Math.sin((t-13.55)*40); }
+    if(t>=16.75&&t<17.5){ sc*=1+0.055*Math.sin(Math.PI*seg(t,16.75,17.5,E.lin)); }
+    const op=seg(t,8.6,9.35);
+    /* 点击穿透透视 */
+    const xr=seg(t,15.35,15.75,E.outCubic)*(1-seg(t,16.0,16.4,E.outCubic));
+    el.ov.style.left=x+'px'; el.ov.style.top=y+'px';
+    el.ov.style.transform='scale('+sc.toFixed(4)+') translateY('+(-land*0).toFixed(1)+'px)';
+    el.ov.style.opacity=(op*(1-0.42*xr)).toFixed(3);
+    el.ovXray.style.opacity=(0.9*xr).toFixed(3);
+    /* 锁 */
+    const shk=lerp(-26,0,lockP);
+    el.ovShackle.setAttribute('transform','rotate('+shk.toFixed(1)+' 20 12) translate(0 '+lerp(-3,0,lockP).toFixed(2)+')');
+    el.ovLockRing.style.borderColor='rgba(143,180,255,'+(0.9*(lockP*(1-seg(t,13.9,14.6)))).toFixed(3)+')';
+    el.ovLockRing.style.transform='scale('+lerp(0.82,1,lockP).toFixed(3)+')';
+    el.ovBubble.textContent='已锁定';
+    el.ovBubble.style.opacity=seg(t,13.7,13.95)*(1-seg(t,14.5,14.8));
+    el.ovBubble.style.left=(x+560)+'px'; el.ovBubble.style.top=(y-56)+'px';
+    el.ovTag.style.opacity=seg(t,15.55,15.8)*(1-seg(t,16.15,16.4));
+    el.ovTag.style.left=(x+596)+'px'; el.ovTag.style.top=(y+158)+'px';
+    /* 歌词轮换 */
+    const SW=[10.1,17.5];
+    let dip=1;
+    for(const s of SW){ dip=Math.min(dip, clamp(Math.abs(t-s)/0.22)); }
+    el.ov.style.opacity=(op*(1-0.42*xr)*Math.max(0.05,dip)).toFixed(3);
+    el.ovLyric.textContent = t<SW[0] ? '从前从前 有个人爱你很久' : (t<SW[1] ? '刮风这天 我试过握着你手' : '好想再问一遍 你会等待还是离开');
+    el.ovTrans.textContent = t<SW[0] ? 'Long long ago, someone loved you for so long'
+      : (t<SW[1] ? 'On this windy day, I tried holding your hand' : 'One more question for you: would you wait, or walk away');
+    /* 波形 */
+    const amp=seg(t,9.5,10.3)*(1-0.35*seg(t,19.8,20.4));
+    for(let i=0;i<WAVE_N;i++){
+      const env=0.35+0.65*Math.abs(Math.sin(i*2.7));
+      const hh=3+ (5+26*amp*env)*(0.5+0.5*Math.sin(t*6.2+i*0.62));
+      waveBars[i].style.height=Math.max(3,hh).toFixed(1)+'px';
+      waveBars[i].style.opacity=(0.35+0.65*amp).toFixed(2);
+    }
+  }
+
+  /* 压暗层（过渡 beat + 结尾卡） */
+  {
+    const beat=0.55*seg(t,7.8,8.5)*(1-seg(t,8.9,9.4));
+    const end=0.88*seg(t,19.6,20.25);
+    el.dim.style.opacity=Math.min(0.92,beat+end).toFixed(3);
+  }
+
+  /* 结尾卡 */
+  {
+    const p=seg(t,20.1,20.95,E.outCubic);
+    el.end.style.opacity=p.toFixed(3);
+    el.end.style.transform='translateY('+lerp(28,0,p).toFixed(1)+'px)';
+  }
+
+  /* 字幕 */
+  {
+    let idx=-1;
+    for(let i=0;i<CAPS.length;i++){ if(t>=CAPS[i].a && t<=CAPS[i].b+0.35) idx=i; }
+    if(idx<0){ el.cap.style.opacity='0'; }
+    else{
+      const c=CAPS[idx];
+      const op=Math.min(seg(t,c.a,c.a+0.38),1-seg(t,c.b,c.b+0.32));
+      el.cap.style.opacity=Math.max(0,op).toFixed(3);
+      el.cap.style.transform='translateY('+lerp(16,0,seg(t,c.a,c.a+0.38)).toFixed(1)+'px)';
+      el.capMain.textContent=c.m; el.capSub.textContent=c.s;
+    }
+  }
+
+  /* 光标 */
+  {
+    let x=1680,y=980,op=0,press=0;
+    const move=(a,b,x0,y0,x1,y1,e)=>{ const p=seg(t,a,b,e); x=lerp(x0,x1,p); y=lerp(y0,y1,p); op=1; };
+    if(t<2.4){} 
+    else if(t<3.3){ move(2.4,2.92,1680,980,988,322,E.inOutSine); }
+    else if(t<4.4){ move(3.3,4.3,988,322,1640,880,E.inOutSine); }
+    else if(t<6.0){ move(4.4,6.0,1640,880,900,1000,E.inOutSine); }
+    else if(t<10.5){ x=900;y=1000;op=1; }
+    else if(t<12.4){ move(10.5,10.92,900,1000,1140,765,E.inOutSine); if(t>=10.92){ /* 拖动段 */ const dp=seg(t,10.9,12.2,E.inOutSine); x=lerp(1140,530,dp); y=lerp(765,715,dp)-26*Math.sin(dp*Math.PI);} }
+    else if(t<13.4){ move(12.4,13.15,530,715,850,678,E.inOutSine); }
+    else if(t<15.5){ move(13.4,15.28,850,678,356,718,E.inOutSine); }
+    else if(t<19.6){ move(15.5,16.6,356,718,540,990,E.inOutSine); }
+    else { x=540;y=990;op=1-seg(t,19.6,19.95); }
+    for(const c of CLICKS){ if(t>=c.t&&t<=c.t+0.14) press=1; }
+    el.cursor.style.opacity=op.toFixed(2);
+    el.cursor.style.transform='translate('+x.toFixed(1)+'px,'+y.toFixed(1)+'px) scale('+(press?0.84:1)+')';
+  }
+
+  /* 点击涟漪 */
+  for(let i=0;i<CLICKS.length;i++){
+    const c=CLICKS[i];
+    const p=seg(t,c.t,c.t+0.55,E.outCubic);
+    if(t>=c.t&&t<=c.t+0.6){
+      const s=lerp(8,110,p);
+      ripples[i].style.left=(c.x-s/2)+'px'; ripples[i].style.top=(c.y-s/2)+'px';
+      ripples[i].style.width=s+'px'; ripples[i].style.height=s+'px';
+      ripples[i].style.opacity=((1-p)*0.85).toFixed(3);
+    } else ripples[i].style.opacity='0';
+  }
+}
+
+/* ── 时钟 ────────────────────────────────── */
+let t0=performance.now();
+window.__recording=false;
+function frame(now){
+  if(window.__paused) return;
+  let t=(now-t0)/1000;
+  if(window.__recording){ if(t>=T_END){ draw(T_END); return; } }
+  else if(t>T_END+1.0){ t0=now; t=0; }
+  draw(Math.min(t,T_END));
+  requestAnimationFrame(frame);
+}
+document.fonts.ready.then(()=>{
+  draw(0);
+  requestAnimationFrame(()=>{ window.__ready=true; requestAnimationFrame(frame); });
+});
+window.__seek=t=>{ draw(Math.max(0,Math.min(T_END,t))); };
+window.__hold=t=>{ window.__paused=true; draw(Math.max(0,Math.min(T_END,t))); };
+</script>
+</body>
+</html>
