@@ -173,33 +173,34 @@ let playbackRect = OverlayLayout.playbackFrame(for: lyricRect)
 let railRect = OverlayLayout.railFrame(for: lyricRect)
 let envelope = OverlayLayout.envelope(for: lyricRect)
 check(OverlayLayout.lyricSize == lyricRect.size &&
-      outerRect == NSRect(x: 100, y: 100, width: 880, height: 256),
-      "One compact 880×256 background encloses all four content zones")
+      outerRect == NSRect(x: 100, y: 136, width: 880, height: 220),
+      "One compact 880×220 background encloses all four content zones")
 check(toolbarRect == NSRect(x: 844, y: 310, width: 120, height: 36) &&
       near(toolbarRect.minY - lyricRect.maxY, 4) && outerRect.contains(toolbarRect),
       "Only placement and appearance tools occupy the compact top-right row")
-check(playbackRect == NSRect(x: 474, y: 144, width: 132, height: 32) &&
-      near(lyricRect.minY - playbackRect.maxY, 4) &&
+check(playbackRect == NSRect(x: 474, y: 312, width: 132, height: 32) &&
+      near(playbackRect.midY, toolbarRect.midY) &&
       near(playbackRect.midX, outerRect.midX) && outerRect.contains(playbackRect),
-      "Transport has its own centered row four points beneath the lyric region")
-check(railRect == NSRect(x: 124, y: 112, width: 832, height: 28) &&
-      near(playbackRect.minY - railRect.maxY, 4) && outerRect.contains(railRect),
-      "The full-width waveform sits four points beneath the transport row")
+      "Transport is centered in the top row, on the same line as the tools")
+check(railRect == NSRect(x: 124, y: 148, width: 832, height: 28) &&
+      near(lyricRect.minY - railRect.maxY, 4) && outerRect.contains(railRect),
+      "The full-width waveform sits four points beneath the lyric band")
 check(outerRect.contains(lyricRect) && envelope == outerRect &&
       !toolbarRect.intersects(lyricRect) && !railRect.intersects(lyricRect) &&
-      !playbackRect.intersects(lyricRect) && !playbackRect.intersects(railRect),
+      !playbackRect.intersects(lyricRect) && !playbackRect.intersects(railRect) &&
+      !playbackRect.intersects(toolbarRect),
       "Tools, text, transport and waveform do not overlap")
 check(ToolbarPlacement.origin(overlay: lyricRect,
                               size: OverlayLayout.toolbarSize) == toolbarRect.origin,
       "Toolbar placement uses the enclosing frame's top-right inset")
 let titleRect = OverlayLayout.titleFrame(for: lyricRect)
 check(near(titleRect.minX, outerRect.minX + 24) &&
-      near(titleRect.maxX, toolbarRect.minX - 12) &&
+      near(titleRect.maxX, playbackRect.minX - 12) &&
       near(titleRect.midY, toolbarRect.midY) &&
       outerRect.contains(titleRect) &&
       !titleRect.intersects(toolbarRect) && !titleRect.intersects(lyricRect) &&
       !titleRect.intersects(railRect) && !titleRect.intersects(playbackRect),
-      "The single-line song title shares the top row and never reaches the tools")
+      "The single-line song title shares the top row and never reaches transport or tools")
 let secondScreen = NSRect(x: 1000, y: -200, width: 1200, height: 700)
 let pinned = OverlayLayout.snappedRightOrigin(for: lyricRect, visibleFrames: [screen])
 let pinnedGroup = OverlayLayout.envelope(for: NSRect(origin: pinned, size: lyricRect.size))
@@ -221,15 +222,15 @@ check(OverlayVisibility.origin(for: envelope, visibleFrames: [screen]) == envelo
       "Keep the complete framed group on screen without jumping")
 let rescued = OverlayVisibility.origin(
     for: envelope.offsetBy(dx: 1200, dy: 700), visibleFrames: [screen])
-check(near(rescued.x, 120) && near(rescued.y, 344),
+check(near(rescued.x, 120) && near(rescued.y, 380),
       "A disconnected screen recovers the whole enclosing frame")
 let clippedLyric = lyricRect.offsetBy(dx: -140, dy: -140)
 let corrected = OverlayLayout.constrainedOrigin(for: clippedLyric, visibleFrames: [screen])
-check(near(corrected.x, 16) && near(corrected.y, 80),
+check(near(corrected.x, 16) && near(corrected.y, 44),
       "Dragging clips the outer frame before losing its toolbar or lower waveform")
 let topEdge = OverlayVisibility.origin(
     for: envelope.offsetBy(dx: 80, dy: 450), visibleFrames: [screen])
-check(near(topEdge.y, 344), "Screen top reserves room for the framed toolbar")
+check(near(topEdge.y, 380), "Screen top reserves room for the framed toolbar")
 let secondEnvelope = envelope.offsetBy(dx: 1100, dy: -20)
 check(OverlayVisibility.origin(for: secondEnvelope,
                                visibleFrames: [screen, secondScreen]) == secondEnvelope.origin,
@@ -240,16 +241,16 @@ check(OverlayVisibility.origin(for: secondEnvelope,
 let tallLyricRect = NSRect(x: lyricRect.minX, y: lyricRect.minY,
                            width: lyricRect.width, height: 180)
 let tallOuter = OverlayLayout.outerFrame(for: tallLyricRect)
-check(tallOuter == NSRect(x: 100, y: 100, width: 880, height: 310) &&
+check(tallOuter == NSRect(x: 100, y: 136, width: 880, height: 274) &&
       near(OverlayLayout.toolbarFrame(for: tallLyricRect).minY - tallLyricRect.maxY, 4) &&
-      near(tallLyricRect.minY - OverlayLayout.playbackFrame(for: tallLyricRect).maxY, 4) &&
-      near(OverlayLayout.playbackFrame(for: tallLyricRect).minY -
-           OverlayLayout.railFrame(for: tallLyricRect).maxY, 4) &&
+      near(OverlayLayout.playbackFrame(for: tallLyricRect).midY,
+           OverlayLayout.toolbarFrame(for: tallLyricRect).midY) &&
+      near(tallLyricRect.minY - OverlayLayout.railFrame(for: tallLyricRect).maxY, 4) &&
       near(OverlayLayout.railFrame(for: tallLyricRect).minY - tallOuter.minY, 12),
       "A taller lyric band moves the lower edge without breaking the rhythm")
 let shortLyricRect = NSRect(x: lyricRect.minX, y: lyricRect.minY,
                             width: lyricRect.width, height: 46)
-check(near(OverlayLayout.outerFrame(for: shortLyricRect).height, 176) &&
+check(near(OverlayLayout.outerFrame(for: shortLyricRect).height, 140) &&
       near(OverlayLayout.toolbarFrame(for: shortLyricRect).minY - shortLyricRect.maxY, 4) &&
       OverlayLayout.outerFrame(for: shortLyricRect)
           .contains(OverlayLayout.railFrame(for: shortLyricRect)),
@@ -557,37 +558,55 @@ check(outer.panel.frame == outerRect && !outer.panel.ignoresMouseEvents &&
       outer.panel.contentView!.layer!.cornerRadius == 21,
       "The unified outer frame accepts pointer input when unlocked")
 outer.show(title: nil)
-check(outer.titleLabel.isHidden && outer.titleLabel.stringValue.isEmpty,
+check(outer.titleView.isHidden && outer.titleView.text.isEmpty,
       "No verified title leaves the top-left row empty")
 outer.show(title: "   ")
-check(outer.titleLabel.isHidden && outer.titleLabel.stringValue.isEmpty,
+check(outer.titleView.isHidden && outer.titleView.text.isEmpty,
       "A blank title is never drawn")
-outer.show(title: String(repeating: "很长的合成歌名", count: 20))
-let titleWindowRect = outer.titleLabel.frame
+outer.titleView.reduceMotionProvider = { false }
+outer.show(title: "短歌名")
+let titleWindowRect = outer.titleView.frame
     .offsetBy(dx: outer.panel.frame.minX, dy: outer.panel.frame.minY)
-check(!outer.titleLabel.isHidden &&
-      outer.titleLabel.maximumNumberOfLines == 1 &&
-      outer.titleLabel.lineBreakMode == .byTruncatingTail &&
+check(!outer.titleView.isHidden && !outer.titleView.isScrolling &&
       titleWindowRect == OverlayLayout.titleFrame(for: lyricRect) &&
-      !titleWindowRect.intersects(toolbarRect),
-      "A long title truncates to one reserved line instead of covering the tools")
-check(outer.titleLabel.accessibilityLabel() == outer.titleLabel.stringValue &&
-      outer.titleLabel.stringValue.hasPrefix("很长的合成歌名"),
-      "Assistive technology reads the same single-line title")
+      !titleWindowRect.intersects(playbackRect) && !titleWindowRect.intersects(toolbarRect),
+      "A fitting title rests inside the reserved top row without touching transport or tools")
+outer.show(title: String(repeating: "很长的合成歌名", count: 20))
+check(outer.titleView.isScrolling &&
+      !outer.titleView.frame.offsetBy(dx: outer.panel.frame.minX,
+                                      dy: outer.panel.frame.minY).intersects(playbackRect),
+      "A long title scrolls inside its single reserved line instead of covering the transport")
+check(outer.titleView.accessibilityLabel() == outer.titleView.text &&
+      outer.titleView.text.hasPrefix("很长的合成歌名"),
+      "Assistive technology reads the whole single-line title")
+let marqueeDistance = outer.titleView.scrollDistance
+check(marqueeDistance > outer.titleView.bounds.width,
+      "The marquee loop is longer than the visible row")
+outer.titleView.advance(by: 1)
+let scrolledOnce = outer.titleView.scrollOffset
+check(near(scrolledOnce, MarqueeTitleView.pointsPerSecond),
+      "One second of marquee moves the title by the slow configured speed")
+outer.titleView.advance(by: TimeInterval(marqueeDistance / MarqueeTitleView.pointsPerSecond))
+check(near(outer.titleView.scrollOffset, scrolledOnce),
+      "A full loop period puts the copies back where the scroll started")
+outer.titleView.reduceMotionProvider = { true }
+check(!outer.titleView.isScrolling && outer.titleView.scrollOffset == 0,
+      "Reduce Motion turns the marquee back into a still line")
+outer.titleView.reduceMotionProvider = { false }
 outer.setTitleVisible(false)
-check(outer.titleLabel.isHidden, "Leaving the overlay hides the verified title")
+check(outer.titleView.isHidden, "Leaving the overlay hides the verified title")
 outer.setTitleVisible(true)
-check(!outer.titleLabel.isHidden, "Re-entering the overlay restores the verified title")
+check(!outer.titleView.isHidden, "Re-entering the overlay restores the verified title")
 var titleOffStyle = OverlayStyle.defaultValue
 titleOffStyle.showsTitle = false
 outer.applyStyle(titleOffStyle)
-check(outer.titleLabel.isHidden && !outer.titleLabel.stringValue.isEmpty,
+check(outer.titleView.isHidden && !outer.titleView.text.isEmpty,
       "Switching the song title off hides the row without discarding the verified name")
 outer.applyStyle(.defaultValue)
-check(!outer.titleLabel.isHidden, "Switching the song title back on restores the same row")
-let titlePoint = NSPoint(x: outer.titleLabel.frame.midX, y: outer.titleLabel.frame.midY)
-check(outer.titleLabel.hitTest(NSPoint(x: outer.titleLabel.bounds.midX,
-                                       y: outer.titleLabel.bounds.midY)) == nil &&
+check(!outer.titleView.isHidden, "Switching the song title back on restores the same row")
+let titlePoint = NSPoint(x: outer.titleView.frame.midX, y: outer.titleView.frame.midY)
+check(outer.titleView.hitTest(NSPoint(x: outer.titleView.bounds.midX,
+                                      y: outer.titleView.bounds.midY)) == nil &&
       outer.panel.contentView!.hitTest(titlePoint) === outer.panel.contentView,
       "The title never takes over dragging from the blank background")
 let lyricView = LyricsView(frame: NSRect(origin: .zero, size: OverlayLayout.lyricSize))
@@ -741,7 +760,7 @@ check(near(primaryLabel.frame.minY - detailLabel.frame.maxY, 12) &&
 check(primaryLabel.frame.minY > detailLabel.frame.maxY &&
       primaryChip.frame.maxX <= lyricView.bounds.maxX - 24 &&
       detailChip.frame.maxX <= lyricView.bounds.maxX - 24 &&
-      lyricRect.minY - playbackRect.maxY == 4,
+      near(playbackRect.midY, toolbarRect.midY),
       "Separate rows and their backgrounds never overlap or leave the lyric frame")
 check(near(primaryLabel.frame.minY - detailLabel.frame.maxY, 12) &&
       detailLabel.frame.minY >= 4 && detailChip.frame.minY >= 4,
