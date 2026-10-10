@@ -9,11 +9,13 @@ final class OverlayFrame {
     static let backgroundLevel = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue - 1)
 
     let panel: NSPanel
-    /// The verified song title: one truncated line that never takes pointer input.
-    private(set) var titleLabel: NSTextField = OverlayTitleLabel(labelWithString: "")
+    /// The verified song title: one line that never takes pointer input and turns
+    /// into a slow marquee while it cannot fit the reserved row.
+    private(set) var titleView = MarqueeTitleView(frame: .zero)
     private let background: OverlayBackgroundView
     private var currentTitle = ""
     private var titleRowVisible = true
+    private var style = OverlayStyle.defaultValue
     var onDrag: ((NSPoint) -> Void)? {
         didSet { background.onDrag = onDrag }
     }
@@ -36,15 +38,8 @@ final class OverlayFrame {
         background.layer?.cornerRadius = 21
         background.layer?.masksToBounds = true
         background.layer?.borderWidth = 1
-        titleLabel.alignment = .left
-        titleLabel.maximumNumberOfLines = 1
-        titleLabel.lineBreakMode = .byTruncatingTail
-        titleLabel.drawsBackground = false
-        titleLabel.isEditable = false
-        titleLabel.isSelectable = false
-        titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        titleLabel.isHidden = true
-        background.addSubview(titleLabel)
+        titleView.isHidden = true
+        background.addSubview(titleView)
 
         panel.contentView = background
         applyStyle(.defaultValue)
@@ -58,8 +53,7 @@ final class OverlayFrame {
     /// Empty or whitespace-only titles hide the row instead of drawing a blank line.
     func show(title: String?) {
         currentTitle = (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        titleLabel.stringValue = currentTitle
-        titleLabel.setAccessibilityLabel(currentTitle)
+        titleView.show(title: currentTitle)
         refreshTitleRow()
     }
 
@@ -69,24 +63,28 @@ final class OverlayFrame {
         refreshTitleRow()
     }
 
+    /// Three independent reasons to hide the row: no verified title, the pointer
+    /// left the overlay, or the user switched the song title off in the settings.
     private func refreshTitleRow() {
-        titleLabel.isHidden = !titleRowVisible || currentTitle.isEmpty
+        titleView.isHidden = !titleRowVisible || !style.showsTitle || currentTitle.isEmpty
     }
 
     private func layoutTitle(for lyrics: NSRect) {
         let outer = OverlayLayout.outerFrame(for: lyrics)
-        titleLabel.frame = OverlayLayout.titleFrame(for: lyrics)
+        titleView.frame = OverlayLayout.titleFrame(for: lyrics)
             .offsetBy(dx: -outer.minX, dy: -outer.minY)
     }
 
     func applyStyle(_ style: OverlayStyle) {
+        self.style = style
         let fill = OverlayStyle.nsColor(style.backgroundRGB) ?? .black
         let tint = OverlayStyle.nsColor(style.textRGB) ?? .white
         background.layer?.backgroundColor =
             fill.withAlphaComponent(style.backgroundOpacity).cgColor
         background.layer?.borderColor =
             tint.withAlphaComponent(min(0.24, style.backgroundOpacity * 0.22)).cgColor
-        titleLabel.textColor = tint.withAlphaComponent(0.72)
+        titleView.applyStyle(style)
+        refreshTitleRow()
     }
 
     func setLocked(_ locked: Bool) {
@@ -94,13 +92,9 @@ final class OverlayFrame {
     }
 
     func setVisible(_ visible: Bool) {
+        titleView.setOverlayVisible(visible)
         if visible { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
     }
-}
-
-/// Visual only: every click falls through to the draggable background beneath it.
-private final class OverlayTitleLabel: NSTextField {
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 /// Keep drag tracking in the background view instead of moving its panel directly.
