@@ -297,7 +297,6 @@ final class LyricsView: NSView {
     /// Between engine events the host advances the verified position on its own
     /// monotonic clock, so the boundary moves smoothly instead of every 300 ms.
     private func tickSweep() {
-        sweep.tickPulse()
         refreshSweep()
     }
 
@@ -346,20 +345,16 @@ private final class LyricSweepState {
 }
 
 /// Paints only the already-sung characters of the current line, at full ink,
-/// directly above the dimmed base label. A quiet cinnabar mark rides the boundary.
+/// directly above the dimmed base label.
 private final class LyricSweepLayer: NSView {
     static let tickInterval: TimeInterval = 1.0 / 30.0
-    static let caretWidth: CGFloat = 3
-    static let caretHeight: CGFloat = 18
 
     var reduceMotionProvider: () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     private let state = LyricSweepState()
-    private var accent = NSColor(srgbRed: 0.75, green: 0.29, blue: 0.18, alpha: 1)
     private var baseInk = NSColor.black
     private var ink = NSColor.black
     private var visible = false
-    private var pulsePhase: CGFloat = 0
     private(set) var isSweeping = false
 
     /// How far the boundary has travelled into the row, for tests: 0 at the
@@ -393,7 +388,6 @@ private final class LyricSweepLayer: NSView {
         NSBezierPath(rect: NSRect(x: rect.minX, y: 0, width: prefix, height: bounds.height)).addClip()
         (line as NSString).draw(in: rect, withAttributes: attributes)
         NSGraphicsContext.current?.restoreGraphicsState()
-        drawCaret(at: rect.minX + prefix)
     }
 
     /// The leading x of a row drawn with the same width rule the label uses.
@@ -427,24 +421,7 @@ private final class LyricSweepLayer: NSView {
     func applyStyle(_ style: OverlayStyle) {
         baseInk = OverlayStyle.nsColor(style.textRGB) ?? .black
         ink = baseInk
-        accent = OverlayStyle.nsColor(style.accentRGB) ?? accent
         needsDisplay = true
-    }
-
-    func tickPulse() {
-        pulsePhase = (pulsePhase + 1).truncatingRemainder(dividingBy: 60)
-        needsDisplay = true
-    }
-
-    private func drawCaret(at x: CGFloat) {
-        let pulse = 0.75 + 0.25 * abs(sin(pulsePhase * .pi / 30))
-        let rect = NSRect(x: x - LyricSweepLayer.caretWidth / 2,
-                          y: bounds.midY - LyricSweepLayer.caretHeight / 2,
-                          width: LyricSweepLayer.caretWidth,
-                          height: LyricSweepLayer.caretHeight)
-        let path = NSBezierPath(roundedRect: rect, xRadius: 1.5, yRadius: 1.5)
-        accent.withAlphaComponent(pulse).setFill()
-        path.fill()
     }
 
     private static func prefixWidth(of line: String, progress: CGFloat, font: NSFont) -> CGFloat {

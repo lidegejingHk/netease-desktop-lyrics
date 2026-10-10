@@ -614,6 +614,15 @@ check(outer.titleView.hitTest(NSPoint(x: outer.titleView.bounds.midX,
                                       y: outer.titleView.bounds.midY)) == nil &&
       outer.panel.contentView!.hitTest(titlePoint) === outer.panel.contentView,
       "The title never takes over dragging from the blank background")
+var transparentSurface = OverlayStyle.defaultValue
+transparentSurface.backgroundOpacity = 0
+outer.applyStyle(transparentSurface)
+check(near(outer.panel.contentView!.layer!.backgroundColor!.alpha, 0) &&
+      near(NSColor(cgColor: outer.panel.contentView!.layer!.borderColor!)!.alphaComponent, 0),
+      "A fully transparent background draws no rim either")
+outer.applyStyle(.defaultValue)
+check(NSColor(cgColor: outer.panel.contentView!.layer!.borderColor!)!.alphaComponent > 0,
+      "The rim returns with an opaque background")
 let lyricView = LyricsView(frame: NSRect(origin: .zero, size: OverlayLayout.lyricSize))
 let customStyle = OverlayStyle(backgroundRGB: "#123456", textRGB: "#F0E0D0",
                                chipRGB: "#112233", backgroundOpacity: 0.15, chipOpacity: 0.55,
@@ -1257,15 +1266,14 @@ lyricView.advanceSweepForTesting()
 check(lyricView.isSweepActive,
       "A clock tick keeps the sweep alive between engine snapshots")
 
-// The boundary walks the row monotonically as the line is sung.
+// The sung prefix walks the row monotonically as the line is sung.
 lyricView.setSweepProgressForTesting(0.25)
 let quarterCaret = lyricView.sweepCaretOffset ?? -1
 lyricView.setSweepProgressForTesting(0.75)
 let threeQuarterCaret = lyricView.sweepCaretOffset ?? -1
 check(quarterCaret > 0 && threeQuarterCaret > quarterCaret &&
-      threeQuarterCaret < primaryLabel.frame.width &&
-      near(primaryLabel.frame.width, primaryLabel.frame.width),
-      "The boundary advances smoothly across the current line")
+      threeQuarterCaret < primaryLabel.frame.width,
+      "The sweep advances smoothly across the current line")
 
 // A seek far outside the reported line holds the old row instead of guessing.
 lyricView.setSweepProgressForTesting(0.5)
