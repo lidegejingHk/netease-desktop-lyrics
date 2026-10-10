@@ -73,6 +73,7 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
     private let spacingSlider = NSSlider(frame: .zero)
     private let mainFontSlider = NSSlider(frame: .zero)
     private let detailFontSlider = NSSlider(frame: .zero)
+    private let delaySlider = NSSlider(frame: .zero)
     private let titleCheckbox = NSButton(checkboxWithTitle: "显示歌曲名", target: nil, action: nil)
     private let waveformCheckbox = NSButton(checkboxWithTitle: "显示声浪", target: nil, action: nil)
     private let backgroundValue = NSTextField(labelWithString: "91%")
@@ -80,6 +81,7 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
     private let spacingValue = NSTextField(labelWithString: "8 pt")
     private let mainFontValue = NSTextField(labelWithString: "24 pt")
     private let detailFontValue = NSTextField(labelWithString: "15 pt")
+    private let delayValue = NSTextField(labelWithString: "200 ms")
     private var style: OverlayStyle
     private var outsideClickMonitors: [Any] = []
 
@@ -90,7 +92,7 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         self.style = style
         // Titled but not closable: the panel is dismissed by losing focus, Esc,
         // Command-W or a click outside, not by a title-bar button.
-        panel = StyleSettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 584),
+        panel = StyleSettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 620),
                                     styleMask: [.titled, .utilityWindow],
                                     backing: .buffered, defer: false)
         super.init()
@@ -104,18 +106,21 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         panel.delegate = self
         configureSharedColorPanel()
 
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 584))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 620))
         panel.contentView = root
-        addCheckbox(titleCheckbox, label: "显示歌曲名", x: 22, to: root)
-        addCheckbox(waveformCheckbox, label: "显示声浪", x: 200, to: root)
-        addLabel("浮层背景颜色", frame: NSRect(x: 22, y: 452, width: 190, height: 22), to: root)
-        addWell(backgroundWell, label: "浮层背景颜色", y: 447, to: root)
-        addLabel("歌词文字颜色", frame: NSRect(x: 22, y: 407, width: 190, height: 22), to: root)
-        addWell(textWell, label: "歌词文字颜色", y: 402, to: root)
-        addLabel("文字背底颜色", frame: NSRect(x: 22, y: 362, width: 190, height: 22), to: root)
-        addWell(chipWell, label: "文字背底颜色", y: 357, to: root)
-        addLabel("强调颜色（声浪与扫光）", frame: NSRect(x: 22, y: 317, width: 210, height: 22), to: root)
-        addWell(accentWell, label: "强调颜色", y: 312, to: root)
+        addCheckbox(titleCheckbox, label: "显示歌曲名", x: 22, y: 572, to: root)
+        addCheckbox(waveformCheckbox, label: "显示声浪", x: 200, y: 572, to: root)
+        addLabel("浮层背景颜色", frame: NSRect(x: 22, y: 497, width: 190, height: 22), to: root)
+        addWell(backgroundWell, label: "浮层背景颜色", y: 492, to: root)
+        addLabel("歌词文字颜色", frame: NSRect(x: 22, y: 457, width: 190, height: 22), to: root)
+        addWell(textWell, label: "歌词文字颜色", y: 452, to: root)
+        addLabel("文字背底颜色", frame: NSRect(x: 22, y: 417, width: 190, height: 22), to: root)
+        addWell(chipWell, label: "文字背底颜色", y: 412, to: root)
+        addLabel("强调颜色（声浪与扫光）", frame: NSRect(x: 22, y: 377, width: 210, height: 22), to: root)
+        addWell(accentWell, label: "强调颜色", y: 372, to: root)
+        addLabel("歌词延迟（觉得比人声早，就调大）", frame: NSRect(x: 22, y: 338, width: 240, height: 22), to: root)
+        addSlider(delaySlider, value: delayValue, label: "歌词延迟",
+                  y: 307, range: OverlayStyle.delayRange, scale: 1, to: root)
         addLabel("浮层背景不透明度", frame: NSRect(x: 22, y: 281, width: 190, height: 22), to: root)
         addSlider(backgroundSlider, value: backgroundValue, label: "浮层背景不透明度",
                   y: 250, range: OverlayStyle.opacityRange, scale: 100, to: root)
@@ -132,7 +137,7 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         addSlider(detailFontSlider, value: detailFontValue, label: "翻译字号",
                   y: 22, range: OverlayStyle.detailFontRange, scale: 1, to: root)
         let reset = NSButton(title: "恢复默认", target: self, action: #selector(resetToDefaults))
-        reset.frame = NSRect(x: 268, y: 478, width: 92, height: 26)
+        reset.frame = NSRect(x: 268, y: 534, width: 92, height: 26)
         reset.setAccessibilityLabel("恢复默认歌词样式")
         root.addSubview(reset)
         refreshControls()
@@ -140,8 +145,8 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
 
     /// The two optional elements sit above the appearance controls: same panel,
     /// same live-apply path, no second place to look for them.
-    private func addCheckbox(_ box: NSButton, label: String, x: CGFloat, to root: NSView) {
-        box.frame = NSRect(x: x, y: 504, width: 170, height: 24)
+    private func addCheckbox(_ box: NSButton, label: String, x: CGFloat, y: CGFloat, to root: NSView) {
+        box.frame = NSRect(x: x, y: y, width: 170, height: 24)
         box.target = self
         box.action = #selector(checkboxChanged(_:))
         box.setAccessibilityLabel(label)
@@ -268,11 +273,13 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         spacingSlider.doubleValue = style.lyricSpacing
         mainFontSlider.doubleValue = style.mainFontSize
         detailFontSlider.doubleValue = style.detailFontSize
+        delaySlider.doubleValue = style.lyricDelayMs
         backgroundValue.stringValue = "\(Int((style.backgroundOpacity * 100).rounded()))%"
         chipValue.stringValue = "\(Int((style.chipOpacity * 100).rounded()))%"
         spacingValue.stringValue = "\(Int(style.lyricSpacing.rounded())) pt"
         mainFontValue.stringValue = "\(Int(style.mainFontSize.rounded())) pt"
         detailFontValue.stringValue = "\(Int(style.detailFontSize.rounded())) pt"
+        delayValue.stringValue = "\(Int(style.lyricDelayMs.rounded())) ms"
     }
 
     @objc private func colorChanged(_ sender: NSColorWell) {
@@ -296,6 +303,7 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         else if sender === spacingSlider { style.lyricSpacing = sender.doubleValue.rounded() }
         else if sender === mainFontSlider { style.mainFontSize = sender.doubleValue.rounded() }
         else if sender === detailFontSlider { style.detailFontSize = sender.doubleValue.rounded() }
+        else if sender === delaySlider { style.lyricDelayMs = sender.doubleValue.rounded() }
         refreshControls()
         onStyleChange?(style)
     }

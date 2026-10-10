@@ -102,6 +102,8 @@ check(baseline.lyricSpacing == 8 && baseline.mainFontSize == 24 && baseline.deta
       "Default lyric spacing and font sizes")
 check(baseline.showsTitle && baseline.showsWaveform,
       "The optional song title and waveform are on by default")
+check(baseline.lyricDelayMs == 200,
+      "The lyric presentation trails the reported position by default")
 
 var edited = baseline
 edited.backgroundRGB = "#12ab34"
@@ -113,6 +115,7 @@ edited.chipOpacity = 0.6
 edited.lyricSpacing = 17
 edited.mainFontSize = 30
 edited.detailFontSize = 20
+edited.lyricDelayMs = 450
 edited.showsTitle = false
 edited.showsWaveform = false
 store.save(edited)
@@ -125,6 +128,7 @@ check(restored.accentRGB == "#0A5CE1", "Accent colour roundtrip")
 check(restored.chipOpacity == 0.6, "Chip opacity roundtrip")
 check(restored.lyricSpacing == 17 && restored.mainFontSize == 30 && restored.detailFontSize == 20,
       "Spacing and font size roundtrip")
+check(restored.lyricDelayMs == 450, "Lyric delay roundtrip")
 check(!restored.showsTitle && !restored.showsWaveform,
       "Both optional-element switches roundtrip when switched off")
 
@@ -162,6 +166,10 @@ check(invalidNumbers.lyricSpacing == baseline.lyricSpacing &&
       invalidNumbers.mainFontSize == baseline.mainFontSize &&
       invalidNumbers.detailFontSize == baseline.detailFontSize,
       "Spacing and font sizes outside their ranges fall back instead of clamping")
+defaults.set(-40.0, forKey: "overlayStyle.lyricDelayMs")
+check(store.load().lyricDelayMs == baseline.lyricDelayMs, "A negative lyric delay falls back")
+defaults.set(5_000.0, forKey: "overlayStyle.lyricDelayMs")
+check(store.load().lyricDelayMs == baseline.lyricDelayMs, "An oversized lyric delay falls back")
 defaults.set(true, forKey: "overlayStyle.mainFontSize")
 check(store.load().mainFontSize == baseline.mainFontSize, "Boolean font size fallback")
 defaults.set(1, forKey: "overlayStyle.showsTitle")
@@ -1066,9 +1074,10 @@ controls.setVisible(false)
 let settings = StyleSettingsPanel(style: .defaultValue)
 let wells = settings.panel.contentView!.subviews.compactMap { $0 as? NSColorWell }
 let sliders = settings.panel.contentView!.subviews.compactMap { $0 as? NSSlider }
-check(wells.count == 4 && sliders.count == 5 &&
-      wells.contains { $0.accessibilityLabel() == "强调颜色" },
-      "Colours, opacity, spacing and both font sizes are adjustable")
+check(wells.count == 4 && sliders.count == 6 &&
+      wells.contains { $0.accessibilityLabel() == "强调颜色" } &&
+      sliders.contains { $0.accessibilityLabel() == "歌词延迟" },
+      "Colours, opacity, spacing, font sizes and the lyric delay are adjustable")
 check(sliders.contains(where: { $0.accessibilityLabel() == "浮层背景不透明度" }),
       "Opacity labels describe the actual slider semantics")
 let toggleBoxes = settings.panel.contentView!.subviews.compactMap { $0 as? NSButton }
@@ -1275,15 +1284,18 @@ check(quarterCaret > 0 && threeQuarterCaret > quarterCaret &&
       threeQuarterCaret < primaryLabel.frame.width,
       "The sweep advances smoothly across the current line")
 
-// A seek far outside the reported line holds the old row instead of guessing.
+// A seek drops every buffered row and continues with the reported one.
 lyricView.setSweepProgressForTesting(0.5)
-lyricView.showLine(primary: "合成歌词", secondary: "合成副句",
-                   line: LineTiming(lineStart_ms: 1_000, nextStart_ms: 5_000,
+lyricView.showLine(primary: "跳转后的歌词", secondary: "",
+                   line: LineTiming(lineStart_ms: 89_000, nextStart_ms: 94_000,
                                     position_ms: 90_000),
                    playing: true, now: now)
 lyricView.layout()
-check(!lyricView.isSweepActive,
-      "A stale line holds its sweep until the engine reports the owning line")
+check(lyricView.displayedTextForTesting == "跳转后的歌词" && lyricView.isSweepActive,
+      "A seek drops the buffered rows and draws the reported row")
+let seekCaret = lyricView.sweepCaretOffset ?? -1
+check(seekCaret >= 0 && seekCaret < primaryLabel.frame.width / 2,
+      "The row after a seek starts a little inside itself, where the seek landed")
 
 // Pausing freezes the sweep at the moment the snapshot arrived.
 lyricView.setSweepProgressForTesting(0.5)
@@ -1296,16 +1308,77 @@ check(!lyricView.isSweepActive,
       "A paused snapshot never sweeps")
 lyricView.setSweepProgressForTesting(0.5)
 lyricView.showLine(primary: "末句歌词", secondary: "",
-                   line: LineTiming(lineStart_ms: 1_000, nextStart_ms: nil,
-                                    position_ms: 3_100),
+                   line: LineTiming(lineStart_ms: 30_000, nextStart_ms: nil,
+                                    position_ms: 30_500),
                    playing: true, now: now)
 lyricView.layout()
-check(!lyricView.isSweepActive,
-      "The final line has no following timestamp and never fakes a boundary")
+check(!lyricView.isSweepActive && lyricView.displayedTextForTesting == "末句歌词",
+      "The final row has no following timestamp and never fakes a boundary")
 lyricView.setSweepProgressForTesting(0.5)
 lyricView.show(primary: "等待网易云音乐…", secondary: "")
 lyricView.layout()
 check(!lyricView.isSweepActive && lyricView.sweepCaretOffset == nil,
       "A status line clears the sweep instead of painting over waiting text")
+
+// The delayed presentation is pure: a row changes only once the clock has
+// actually reached it, and progress is clamped to the row.
+let early = LyricRow(text: "第一行", secondary: "第二行", lineStartMs: 0, nextStartMs: 4_000,
+                       positionMs: 100, playing: true, receivedAt: 0)
+let late = LyricRow(text: "第二行", secondary: "第三行", lineStartMs: 4_000, nextStartMs: 8_000,
+                      positionMs: 4_100, playing: true, receivedAt: 0.3)
+check(LyricPresentation.selectedIndex([early, late], target: 3_900) == 0 &&
+      LyricPresentation.selectedIndex([early, late], target: 4_100) == 1,
+      "The presentation only ever selects rows the clock has already reached")
+check(LyricPresentation.selectedIndex([early, late], target: 10) == 0,
+      "A clock before every row keeps the oldest row instead of drawing a wrong one")
+check(LyricPresentation.progress(early, target: 2_000) == 0.5 &&
+      LyricPresentation.progress(early, target: -500) == 0 &&
+      LyricPresentation.progress(early, target: 9_999) == 1 &&
+      LyricPresentation.progress(
+          LyricRow(text: "x", secondary: "", lineStartMs: 0, nextStartMs: nil,
+                     positionMs: 0, playing: true, receivedAt: 0), target: 5_000) == nil,
+      "Row progress is clamped to the row and absent for the last row")
+check(LyricPresentation.estimatedPosition([early], now: 1.0) == 1_100 &&
+      LyricPresentation.estimatedPosition(
+          [LyricRow(text: "x", secondary: "", lineStartMs: 0, nextStartMs: 1,
+                      positionMs: 7_000, playing: false, receivedAt: 0)], now: 9.0) == 7_000,
+      "The clock runs on between rows and freezes while paused")
+
+// End to end: a row the engine has already reported is still not drawn while
+// the delayed clock is behind it, and appears once the delay has passed.
+let delayNow = Date().timeIntervalSinceReferenceDate
+lyricView.applyStyle(.defaultValue)
+lyricView.show(primary: "", secondary: "")
+lyricView.showLine(primary: "第一行", secondary: "第二行",
+                   line: LineTiming(lineStart_ms: 0, nextStart_ms: 4_000, position_ms: 3_700),
+                   playing: true, now: delayNow)
+lyricView.showLine(primary: "第二行", secondary: "第三行",
+                   line: LineTiming(lineStart_ms: 4_000, nextStart_ms: 8_000, position_ms: 4_100),
+                   playing: true, now: Date().timeIntervalSinceReferenceDate)
+lyricView.layout()
+check(lyricView.displayedTextForTesting == "第一行",
+      "A reported row waits until the delayed clock reaches it")
+lyricView.advanceSweepForTesting()
+check(lyricView.displayedTextForTesting == "第一行",
+      "A clock tick just after the report still draws the earlier row")
+Thread.sleep(forTimeInterval: 0.25)
+lyricView.advanceSweepForTesting()
+check(lyricView.displayedTextForTesting == "第二行",
+      "The row switches once the delay has passed")
+
+// Turning the delay off switches immediately, for anyone who prefers live text.
+var liveStyle = OverlayStyle.defaultValue
+liveStyle.lyricDelayMs = 0
+lyricView.applyStyle(liveStyle)
+lyricView.show(primary: "", secondary: "")
+lyricView.showLine(primary: "第一行", secondary: "第二行",
+                   line: LineTiming(lineStart_ms: 0, nextStart_ms: 4_000, position_ms: 3_700),
+                   playing: true, now: delayNow)
+lyricView.showLine(primary: "第二行", secondary: "第三行",
+                   line: LineTiming(lineStart_ms: 4_000, nextStart_ms: 8_000, position_ms: 4_100),
+                   playing: true, now: Date().timeIntervalSinceReferenceDate)
+lyricView.layout()
+check(lyricView.displayedTextForTesting == "第二行",
+      "With no delay the newest reported row is drawn at once")
 
 print("Overlay appearance: all assertions passed")
