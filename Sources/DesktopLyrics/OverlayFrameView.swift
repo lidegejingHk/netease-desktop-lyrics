@@ -14,6 +14,7 @@ final class OverlayFrame {
     private let background: OverlayBackgroundView
     private var currentTitle = ""
     private var titleRowVisible = true
+    private var style = OverlayStyle.defaultValue
     var onDrag: ((NSPoint) -> Void)? {
         didSet { background.onDrag = onDrag }
     }
@@ -69,8 +70,10 @@ final class OverlayFrame {
         refreshTitleRow()
     }
 
+    /// Three independent reasons to hide the row: no verified title, the pointer
+    /// left the overlay, or the user switched the song title off in the settings.
     private func refreshTitleRow() {
-        titleLabel.isHidden = !titleRowVisible || currentTitle.isEmpty
+        titleLabel.isHidden = !titleRowVisible || !style.showsTitle || currentTitle.isEmpty
     }
 
     private func layoutTitle(for lyrics: NSRect) {
@@ -80,6 +83,7 @@ final class OverlayFrame {
     }
 
     func applyStyle(_ style: OverlayStyle) {
+        self.style = style
         let fill = OverlayStyle.nsColor(style.backgroundRGB) ?? .black
         let tint = OverlayStyle.nsColor(style.textRGB) ?? .white
         background.layer?.backgroundColor =
@@ -87,6 +91,7 @@ final class OverlayFrame {
         background.layer?.borderColor =
             tint.withAlphaComponent(min(0.24, style.backgroundOpacity * 0.22)).cgColor
         titleLabel.textColor = tint.withAlphaComponent(0.72)
+        refreshTitleRow()
     }
 
     func setLocked(_ locked: Bool) {

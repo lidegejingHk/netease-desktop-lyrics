@@ -15,6 +15,7 @@ final class WaveformRail {
     let panel: NSPanel
     let content: WaveformRailView
     private var isVisible = false
+    private var showsWaveform = true
 
     init() {
         let frame = NSRect(origin: .zero, size: OverlayLayout.railSize)
@@ -36,7 +37,14 @@ final class WaveformRail {
         panel.setFrame(OverlayLayout.railFrame(for: lyrics), display: true)
     }
 
-    func applyStyle(_ style: OverlayStyle) { content.applyStyle(style) }
+    func applyStyle(_ style: OverlayStyle) {
+        content.applyStyle(style)
+        // Recolouring must not order windows around; only a real switch change
+        // (or a show/hide) touches the panel and the animation state.
+        guard style.showsWaveform != showsWaveform else { return }
+        showsWaveform = style.showsWaveform
+        applyVisibility()
+    }
 
     func show(fraction: CGFloat?, playing: Bool) {
         content.show(fraction: fraction, playing: playing)
@@ -44,8 +52,15 @@ final class WaveformRail {
 
     func setVisible(_ visible: Bool) {
         isVisible = visible
-        content.waveform.setOverlayVisible(visible)
-        if visible { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
+        applyVisibility()
+    }
+
+    /// The waveform is an optional element. Switching it off stops its animation
+    /// too; the enclosing frame keeps every point of its geometry either way.
+    private func applyVisibility() {
+        let onScreen = isVisible && showsWaveform
+        content.waveform.setOverlayVisible(onScreen)
+        if onScreen { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
     }
 }
 
