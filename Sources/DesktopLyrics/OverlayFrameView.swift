@@ -92,8 +92,13 @@ final class OverlayFrame {
             fill.withAlphaComponent(style.backgroundOpacity).cgColor
         // The edge follows the text tone so a light paper and a dark panel both
         // get a border that reads: slightly darker on paper, slightly lighter on ink.
+        // It belongs to the surface and fades with it: a fully transparent
+        // background shows no rim, and double-click-through looks intentional.
+        let surface = CGFloat(style.backgroundOpacity)
         background.layer?.borderColor =
-            tint.withAlphaComponent(min(0.16, style.backgroundOpacity * 0.14)).cgColor
+            tint.withAlphaComponent(min(0.16 * surface, 0.16)).cgColor
+        sheen.layer?.borderColor =
+            NSColor.white.withAlphaComponent(0.22 * surface).cgColor
         titleView.applyStyle(style)
         refreshTitleRow()
     }
