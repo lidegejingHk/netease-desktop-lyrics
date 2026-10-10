@@ -90,10 +90,13 @@ final class WaveformRailView: NSView {
 
     func applyStyle(_ style: OverlayStyle) {
         let text = OverlayStyle.nsColor(style.textRGB) ?? .white
+        let accent = OverlayStyle.nsColor(style.accentRGB)
         layer?.backgroundColor = NSColor.clear.cgColor
-        progressTrack.layer?.backgroundColor = text.withAlphaComponent(0.11).cgColor
-        progress.layer?.backgroundColor = text.withAlphaComponent(0.50).cgColor
+        progressTrack.layer?.backgroundColor = text.withAlphaComponent(0.12).cgColor
+        progress.layer?.backgroundColor =
+            (accent ?? text).withAlphaComponent(accent == nil ? 0.50 : 0.72).cgColor
         waveform.setTint(text)
+        waveform.setAccent(accent)
     }
 
     /// `fraction` is the whole-song position; `nil` means the song length is unknown,

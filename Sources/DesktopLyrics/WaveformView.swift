@@ -15,6 +15,8 @@ final class WaveformView: NSView {
     private var playing = false
     private var overlayVisible = true
     private var tint = NSColor.white
+    /// The whole-song progress side uses the user's accent instead of the ink.
+    private var accent: NSColor?
     private var progress: CGFloat = 0
     var reduceMotionProvider: () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
@@ -43,6 +45,11 @@ final class WaveformView: NSView {
 
     func setTint(_ color: NSColor) {
         tint = color
+        updateBars()
+    }
+
+    func setAccent(_ color: NSColor?) {
+        accent = color
         updateBars()
     }
 
@@ -103,8 +110,9 @@ final class WaveformView: NSView {
             bar.frame = NSRect(x: x + (spacing - 2) / 2,
                                y: (bounds.height - height) / 2,
                                width: 2, height: height)
-            bar.backgroundColor = tint.withAlphaComponent(
-                CGFloat(index) / CGFloat(Self.barCount) <= progress ? 0.88 : 0.27).cgColor
+            let played = CGFloat(index) / CGFloat(Self.barCount) <= progress
+            let color = played && accent != nil ? accent! : tint
+            bar.backgroundColor = color.withAlphaComponent(played ? 0.92 : 0.27).cgColor
         }
         CATransaction.commit()
     }

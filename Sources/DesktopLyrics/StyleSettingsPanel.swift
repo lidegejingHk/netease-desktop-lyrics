@@ -67,6 +67,7 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
     private let backgroundWell = AnchoredColorWell(frame: .zero)
     private let textWell = AnchoredColorWell(frame: .zero)
     private let chipWell = AnchoredColorWell(frame: .zero)
+    private let accentWell = AnchoredColorWell(frame: .zero)
     private let backgroundSlider = NSSlider(frame: .zero)
     private let chipSlider = NSSlider(frame: .zero)
     private let spacingSlider = NSSlider(frame: .zero)
@@ -89,7 +90,7 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         self.style = style
         // Titled but not closable: the panel is dismissed by losing focus, Esc,
         // Command-W or a click outside, not by a title-bar button.
-        panel = StyleSettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 544),
+        panel = StyleSettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 584),
                                     styleMask: [.titled, .utilityWindow],
                                     backing: .buffered, defer: false)
         super.init()
@@ -103,33 +104,35 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         panel.delegate = self
         configureSharedColorPanel()
 
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 544))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 584))
         panel.contentView = root
         addCheckbox(titleCheckbox, label: "显示歌曲名", x: 22, to: root)
         addCheckbox(waveformCheckbox, label: "显示声浪", x: 200, to: root)
         addLabel("浮层背景颜色", frame: NSRect(x: 22, y: 452, width: 190, height: 22), to: root)
         addWell(backgroundWell, label: "浮层背景颜色", y: 447, to: root)
-        addLabel("歌词文字颜色", frame: NSRect(x: 22, y: 411, width: 190, height: 22), to: root)
-        addWell(textWell, label: "歌词文字颜色", y: 406, to: root)
-        addLabel("文字背底颜色", frame: NSRect(x: 22, y: 370, width: 190, height: 22), to: root)
-        addWell(chipWell, label: "文字背底颜色", y: 365, to: root)
-        addLabel("浮层背景不透明度", frame: NSRect(x: 22, y: 327, width: 190, height: 22), to: root)
+        addLabel("歌词文字颜色", frame: NSRect(x: 22, y: 407, width: 190, height: 22), to: root)
+        addWell(textWell, label: "歌词文字颜色", y: 402, to: root)
+        addLabel("文字背底颜色", frame: NSRect(x: 22, y: 362, width: 190, height: 22), to: root)
+        addWell(chipWell, label: "文字背底颜色", y: 357, to: root)
+        addLabel("强调颜色（声浪与扫光）", frame: NSRect(x: 22, y: 317, width: 210, height: 22), to: root)
+        addWell(accentWell, label: "强调颜色", y: 312, to: root)
+        addLabel("浮层背景不透明度", frame: NSRect(x: 22, y: 281, width: 190, height: 22), to: root)
         addSlider(backgroundSlider, value: backgroundValue, label: "浮层背景不透明度",
-                  y: 296, range: OverlayStyle.opacityRange, scale: 100, to: root)
-        addLabel("文字背底不透明度", frame: NSRect(x: 22, y: 266, width: 190, height: 22), to: root)
+                  y: 250, range: OverlayStyle.opacityRange, scale: 100, to: root)
+        addLabel("文字背底不透明度", frame: NSRect(x: 22, y: 224, width: 190, height: 22), to: root)
         addSlider(chipSlider, value: chipValue, label: "文字背底不透明度",
-                  y: 235, range: OverlayStyle.opacityRange, scale: 100, to: root)
-        addLabel("歌词上下留白", frame: NSRect(x: 22, y: 204, width: 190, height: 22), to: root)
+                  y: 193, range: OverlayStyle.opacityRange, scale: 100, to: root)
+        addLabel("歌词上下留白", frame: NSRect(x: 22, y: 167, width: 190, height: 22), to: root)
         addSlider(spacingSlider, value: spacingValue, label: "歌词上下留白",
-                  y: 173, range: OverlayStyle.spacingRange, scale: 1, to: root)
-        addLabel("歌词字号", frame: NSRect(x: 22, y: 142, width: 190, height: 22), to: root)
+                  y: 136, range: OverlayStyle.spacingRange, scale: 1, to: root)
+        addLabel("歌词字号", frame: NSRect(x: 22, y: 110, width: 190, height: 22), to: root)
         addSlider(mainFontSlider, value: mainFontValue, label: "歌词字号",
-                  y: 111, range: OverlayStyle.mainFontRange, scale: 1, to: root)
-        addLabel("翻译字号", frame: NSRect(x: 22, y: 80, width: 190, height: 22), to: root)
+                  y: 79, range: OverlayStyle.mainFontRange, scale: 1, to: root)
+        addLabel("翻译字号", frame: NSRect(x: 22, y: 53, width: 190, height: 22), to: root)
         addSlider(detailFontSlider, value: detailFontValue, label: "翻译字号",
-                  y: 49, range: OverlayStyle.detailFontRange, scale: 1, to: root)
+                  y: 22, range: OverlayStyle.detailFontRange, scale: 1, to: root)
         let reset = NSButton(title: "恢复默认", target: self, action: #selector(resetToDefaults))
-        reset.frame = NSRect(x: 271, y: 12, width: 88, height: 27)
+        reset.frame = NSRect(x: 268, y: 478, width: 92, height: 26)
         reset.setAccessibilityLabel("恢复默认歌词样式")
         root.addSubview(reset)
         refreshControls()
@@ -257,6 +260,7 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         backgroundWell.color = OverlayStyle.nsColor(style.backgroundRGB) ?? .black
         textWell.color = OverlayStyle.nsColor(style.textRGB) ?? .white
         chipWell.color = OverlayStyle.nsColor(style.chipRGB) ?? .black
+        accentWell.color = OverlayStyle.nsColor(style.accentRGB) ?? .orange
         backgroundSlider.doubleValue = style.backgroundOpacity * 100
         chipSlider.doubleValue = style.chipOpacity * 100
         titleCheckbox.state = style.showsTitle ? .on : .off
@@ -275,6 +279,7 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         if sender === backgroundWell { style.backgroundRGB = OverlayStyle.rgbHex(sender.color) }
         if sender === textWell { style.textRGB = OverlayStyle.rgbHex(sender.color) }
         if sender === chipWell { style.chipRGB = OverlayStyle.rgbHex(sender.color) }
+        if sender === accentWell { style.accentRGB = OverlayStyle.rgbHex(sender.color) }
         onStyleChange?(style)
     }
 
