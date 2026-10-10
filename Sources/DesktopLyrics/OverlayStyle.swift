@@ -13,6 +13,11 @@ struct OverlayStyle: Equatable {
     var lyricSpacing: Double
     var mainFontSize: Double
     var detailFontSize: Double
+    /// How far the lyric row and its sweep trail the reported position: the
+    /// player's clock runs ahead of what is audible, and some lyric files mark
+    /// a row's end before the sung line actually finishes. Only the presentation
+    /// is delayed; the engine and the whole-song rail stay live.
+    var lyricDelayMs: Double
     /// Optional elements: both default to on and are user-switchable.
     var showsTitle: Bool = true
     var showsWaveform: Bool = true
@@ -21,6 +26,7 @@ struct OverlayStyle: Equatable {
     static let spacingRange: ClosedRange<Double> = 0...40
     static let mainFontRange: ClosedRange<Double> = 14...40
     static let detailFontRange: ClosedRange<Double> = 11...28
+    static let delayRange: ClosedRange<Double> = 0...1_000
 
     /// The overlay's baseline look: warm paper, ink text and a cinnabar accent.
     /// "Restore Defaults" reports exactly this style.
@@ -33,7 +39,8 @@ struct OverlayStyle: Equatable {
         chipOpacity: 0,
         lyricSpacing: 8,
         mainFontSize: 24,
-        detailFontSize: 15
+        detailFontSize: 15,
+        lyricDelayMs: 200
     )
 
     /// An explicit initializer keeps the memberwise call sites stable while the
@@ -41,7 +48,7 @@ struct OverlayStyle: Equatable {
     init(backgroundRGB: String, textRGB: String, chipRGB: String,
          accentRGB: String = "#BF4A2E", backgroundOpacity: Double, chipOpacity: Double,
          lyricSpacing: Double, mainFontSize: Double, detailFontSize: Double,
-         showsTitle: Bool = true, showsWaveform: Bool = true) {
+         lyricDelayMs: Double = 200, showsTitle: Bool = true, showsWaveform: Bool = true) {
         self.backgroundRGB = backgroundRGB
         self.textRGB = textRGB
         self.chipRGB = chipRGB
@@ -51,6 +58,7 @@ struct OverlayStyle: Equatable {
         self.lyricSpacing = lyricSpacing
         self.mainFontSize = mainFontSize
         self.detailFontSize = detailFontSize
+        self.lyricDelayMs = lyricDelayMs
         self.showsTitle = showsTitle
         self.showsWaveform = showsWaveform
     }
@@ -123,6 +131,8 @@ struct OverlayStyleStore {
                                  fallback: fallback.mainFontSize),
             detailFontSize: number("detailFontSize", range: OverlayStyle.detailFontRange,
                                    fallback: fallback.detailFontSize),
+            lyricDelayMs: number("lyricDelayMs", range: OverlayStyle.delayRange,
+                                 fallback: fallback.lyricDelayMs),
             showsTitle: boolean("showsTitle", fallback: fallback.showsTitle),
             showsWaveform: boolean("showsWaveform", fallback: fallback.showsWaveform)
         )
@@ -153,6 +163,9 @@ struct OverlayStyleStore {
         defaults.set(Self.validNumber(style.detailFontSize, range: OverlayStyle.detailFontRange,
                                       fallback: fallback.detailFontSize),
                      forKey: prefix + "detailFontSize")
+        defaults.set(Self.validNumber(style.lyricDelayMs, range: OverlayStyle.delayRange,
+                                      fallback: fallback.lyricDelayMs),
+                     forKey: prefix + "lyricDelayMs")
         defaults.set(style.showsTitle, forKey: prefix + "showsTitle")
         defaults.set(style.showsWaveform, forKey: prefix + "showsWaveform")
     }

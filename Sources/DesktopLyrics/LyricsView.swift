@@ -25,34 +25,25 @@ final class LyricsView: NSView {
     private var mainFits: [FitCache] = []
     private var detailFits: [FitCache] = []
     private var primaryFit: FittedLyric?
-    private var position: TimedPosition?
+    /// Recent verified rows in track time: the presentation clock trails the
+    /// engine by the user's delay, so it always has an earlier row to draw.
+    private var events: [LyricRow] = []
     private var sweepTimer: Timer?
+
+    /// At most this many rows are kept; twelve covers every delay the slider
+    /// offers at the engine's 300 ms cadence.
+    static let eventBufferLimit = 12
+    /// A jump this large between rows is a seek or a new track: the buffer
+    /// restarts so a stale row can never be drawn after it.
+    static let seekJumpMs: UInt64 = 2_000
 
     /// Test hooks: where the sung/unsung boundary sits and whether it advances.
     var sweepCaretOffset: CGFloat? { sweep.caretOffset }
     var isSweepActive: Bool { sweep.isSweeping }
+    var displayedTextForTesting: String { primaryText }
     func advanceSweepForTesting() { tickSweep() }
     func setSweepProgressForTesting(_ value: CGFloat) {
         sweep.setProgress(value, sweeping: true)
-    }
-    func debugSweep() -> String {
-        guard let position else { return "noPos" }
-        let elapsed = Date().timeIntervalSinceReferenceDate - position.receivedAt
-        let estimated = position.playing
-            ? Double(position.line.position_ms) + max(0, elapsed) * 1000
-            : Double(position.line.position_ms)
-        let progress = (estimated - Double(position.line.lineStart_ms))
-            / Double((position.line.nextStart_ms ?? 0) - position.line.lineStart_ms)
-        return "pos_ms=\(position.position_ms) lineStart=\(position.line.lineStart_ms) next=\(String(describing: position.line.nextStart_ms)) elapsed=\(elapsed) est=\(estimated) progress=\(progress)"
-    }
-
-    /// The verified playback snapshot plus the moment it arrived, so the sweep
-    /// advances on a monotonic clock between engine events instead of stepping.
-    private struct TimedPosition {
-        let receivedAt: TimeInterval
-        let position_ms: UInt64
-        let playing: Bool
-        let line: LineTiming
     }
 
     override init(frame: NSRect) {
@@ -110,9 +101,12 @@ final class LyricsView: NSView {
         layer?.backgroundColor = NSColor.clear.cgColor
         // The unsung current line stays a quiet base; the sweep layer paints the
         // sung characters in full ink on top of it.
-        mainLabel.textColor = text.withAlphaComponent(position == nil ? 1 : 0.38)
+        mainLabel.textColor = text.withAlphaComponent(events.isEmpty ? 1 : 0.38)
         detailLabel.textColor = text.withAlphaComponent(0.70)
         sweep.applyStyle(style)
+        // A delay change takes effect on the next frame, without waiting for
+        // the next engine event.
+        renderPresentation(now: Date().timeIntervalSinceReferenceDate)
         let chipColor = chip.withAlphaComponent(newStyle.chipOpacity).cgColor
         mainChip.layer?.backgroundColor = chipColor
         detailChip.layer?.backgroundColor = chipColor
@@ -240,9 +234,10 @@ final class LyricsView: NSView {
     }
 
     func show(primary: String, secondary: String) {
+        events.removeAll()
+        syncSweepTimer()
         primaryText = primary
         secondaryText = secondary
-        position = nil
         mainLabel.textColor = inkColor(1)
         sweep.setProgress(0, sweeping: false)
         sweep.setDimmed(false)
@@ -250,26 +245,31 @@ final class LyricsView: NSView {
         updateBandHeight()
     }
 
-    /// A verified lyric pair: the current line, the next line (or translation),
-    /// and the line's own timing so the sweep can advance between snapshots.
+    /// A verified lyric row: the current line, the next line (or translation),
+    /// and the row's own timing. The row is buffered in track time and drawn by
+    /// the presentation clock, `lyricDelayMs` behind the reported position.
     func showLine(primary: String, secondary: String,
                   line: LineTiming?, playing: Bool, now: TimeInterval) {
-        primaryText = primary
-        secondaryText = secondary
-        if let line {
-            position = TimedPosition(receivedAt: now, position_ms: line.position_ms,
-                                     playing: playing, line: line)
-        } else {
-            position = nil
+        guard let line else {
+            show(primary: primary, secondary: secondary)
+            return
         }
-        needsLayout = true
-        updateBandHeight()
-        sweep.refresh(fit: primaryFit, primary: true)
-        // Without timing the label itself is the full-ink row: no sweep, no dimming.
-        mainLabel.textColor = inkColor(position == nil ? 1 : 0.38)
-        sweep.setDimmed(position != nil)
+        let event = LyricRow(text: primary, secondary: secondary,
+                               lineStartMs: line.lineStart_ms, nextStartMs: line.nextStart_ms,
+                               positionMs: line.position_ms, playing: playing, receivedAt: now)
+        if let last = events.last {
+            let jump = event.positionMs > last.positionMs
+                ? event.positionMs - last.positionMs
+                : last.positionMs - event.positionMs
+            if jump > Self.seekJumpMs { events.removeAll() }
+        }
+        events.append(event)
+        if events.count > Self.eventBufferLimit { events.removeFirst() }
+        // A timed row draws a dim base for the sweep to light up.
+        mainLabel.textColor = inkColor(0.38)
+        sweep.setDimmed(true)
         syncSweepTimer()
-        refreshSweep()
+        renderPresentation(now: now)
     }
 
     private func inkColor(_ alpha: CGFloat) -> NSColor {
@@ -278,10 +278,10 @@ final class LyricsView: NSView {
 
     // MARK: - Current-line sweep
 
-    /// Runs only while a verified line is still being sung: pausing or losing the
+    /// Runs only while a verified row is still being sung: pausing or losing the
     /// timing data stops the timer instead of guessing a position.
     private func syncSweepTimer() {
-        let shouldRun = position?.playing == true
+        let shouldRun = events.last?.playing == true
         if shouldRun, sweepTimer == nil {
             let timer = Timer(timeInterval: LyricSweepLayer.tickInterval, repeats: true) { [weak self] _ in
                 self?.tickSweep()
@@ -294,41 +294,81 @@ final class LyricsView: NSView {
         }
     }
 
-    /// Between engine events the host advances the verified position on its own
-    /// monotonic clock, so the boundary moves smoothly instead of every 300 ms.
+    /// Between engine events the host advances the presentation clock itself, so
+    /// the row and its sweep move smoothly instead of every 300 ms.
     private func tickSweep() {
-        refreshSweep()
+        renderPresentation(now: Date().timeIntervalSinceReferenceDate)
     }
 
-    /// Maps verified elapsed time to the current row's sweep. A position far
-    /// outside this line means a seek: hold the old line until the engine
-    /// reports the line that actually owns the new position.
-    private func refreshSweep() {
-        guard let position, primaryFit != nil else {
-            sweep.setProgress(0, sweeping: false)
+    /// Draws the row and the sweep for the delayed presentation clock. The row
+    /// shown is the newest verified row at or before `clock`, so a row can only
+    /// change once the sung line has had its full time plus the delay.
+    private func renderPresentation(now: TimeInterval) {
+        guard let estimated = LyricPresentation.estimatedPosition(events, now: now),
+              let index = LyricPresentation.selectedIndex(events, target: estimated - style.lyricDelayMs) else {
             return
         }
-        let line = position.line
-        guard let next = line.nextStart_ms, next > line.lineStart_ms else {
-            // The last line has no following timestamp: show it as fully sung.
+        let target = max(0, estimated - style.lyricDelayMs)
+        let event = events[index]
+        if event.text != primaryText || event.secondary != secondaryText {
+            primaryText = event.text
+            secondaryText = event.secondary
+            needsLayout = true
+            updateBandHeight()
+            sweep.refresh(fit: primaryFit, primary: true)
+        }
+        // The row may trail the player, but whether the sweep animates follows
+        // the player's own state: pausing freezes the delayed row at once.
+        let playing = events.last?.playing == true
+        if let progress = LyricPresentation.progress(event, target: target) {
+            sweep.setProgress(progress, sweeping: playing)
+        } else {
+            // The last row has no following timestamp: show it as fully sung.
             sweep.setProgress(1, sweeping: false)
-            return
         }
-        let elapsed = Date().timeIntervalSinceReferenceDate - position.receivedAt
-        let estimated = position.playing
-            ? Double(line.position_ms) + max(0, elapsed) * 1000
-            : Double(line.position_ms)
-        let progress = (estimated - Double(line.lineStart_ms))
-            / Double(next - line.lineStart_ms)
-        guard progress >= -0.05, progress <= 1.25 else {
-            sweep.setProgress(0, sweeping: false)
-            return
-        }
-        sweep.setProgress(CGFloat(min(1, max(0, progress))), sweeping: position.playing)
     }
 }
 
-/// The verified timing of the current lyric line, straight from the engine.
+/// One verified lyric row in track time, kept with the moment it arrived so the
+/// presentation clock can keep running between engine events.
+struct LyricRow: Equatable {
+    let text: String
+    let secondary: String
+    let lineStartMs: UInt64
+    let nextStartMs: UInt64?
+    let positionMs: UInt64
+    let playing: Bool
+    let receivedAt: TimeInterval
+}
+
+/// Presentation timing for the lyric rows. The engine's estimate keeps advancing
+/// between events; the display deliberately trails it by the selected delay so a
+/// row never changes before the sung line has actually finished.
+enum LyricPresentation {
+    /// How far the song has played by wall clock since the newest row arrived.
+    static func estimatedPosition(_ events: [LyricRow], now: TimeInterval) -> Double? {
+        guard let latest = events.last else { return nil }
+        let elapsed = latest.playing ? max(0, now - latest.receivedAt) : 0
+        return Double(latest.positionMs) + elapsed * 1_000
+    }
+
+    /// The row to draw for a presentation position: the newest row at or before
+    /// it. Rows still ahead of the clock are never drawn, so nothing is shown
+    /// early; a clock before the oldest row keeps that oldest row.
+    static func selectedIndex(_ events: [LyricRow], target: Double) -> Int? {
+        guard !events.isEmpty else { return nil }
+        return events.lastIndex { Double($0.positionMs) <= target } ?? 0
+    }
+
+    /// The sweep's 0...1 progress inside a row; nil when the row has no end.
+    static func progress(_ event: LyricRow, target: Double) -> CGFloat? {
+        guard let next = event.nextStartMs, next > event.lineStartMs else { return nil }
+        let raw = (target - Double(event.lineStartMs)) / Double(next - event.lineStartMs)
+        return CGFloat(min(1, max(0, raw)))
+    }
+}
+
+/// The verified timing of the current lyric row, straight from the engine.
 struct LineTiming: Equatable {
     let lineStart_ms: UInt64
     let nextStart_ms: UInt64?
