@@ -72,6 +72,8 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
     private let spacingSlider = NSSlider(frame: .zero)
     private let mainFontSlider = NSSlider(frame: .zero)
     private let detailFontSlider = NSSlider(frame: .zero)
+    private let titleCheckbox = NSButton(checkboxWithTitle: "显示歌曲名", target: nil, action: nil)
+    private let waveformCheckbox = NSButton(checkboxWithTitle: "显示声浪", target: nil, action: nil)
     private let backgroundValue = NSTextField(labelWithString: "91%")
     private let chipValue = NSTextField(labelWithString: "0%")
     private let spacingValue = NSTextField(labelWithString: "8 pt")
@@ -87,7 +89,7 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         self.style = style
         // Titled but not closable: the panel is dismissed by losing focus, Esc,
         // Command-W or a click outside, not by a title-bar button.
-        panel = StyleSettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 500),
+        panel = StyleSettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 544),
                                     styleMask: [.titled, .utilityWindow],
                                     backing: .buffered, defer: false)
         super.init()
@@ -101,8 +103,10 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         panel.delegate = self
         configureSharedColorPanel()
 
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 500))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 544))
         panel.contentView = root
+        addCheckbox(titleCheckbox, label: "显示歌曲名", x: 22, to: root)
+        addCheckbox(waveformCheckbox, label: "显示声浪", x: 200, to: root)
         addLabel("浮层背景颜色", frame: NSRect(x: 22, y: 452, width: 190, height: 22), to: root)
         addWell(backgroundWell, label: "浮层背景颜色", y: 447, to: root)
         addLabel("歌词文字颜色", frame: NSRect(x: 22, y: 411, width: 190, height: 22), to: root)
@@ -129,6 +133,16 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         reset.setAccessibilityLabel("恢复默认歌词样式")
         root.addSubview(reset)
         refreshControls()
+    }
+
+    /// The two optional elements sit above the appearance controls: same panel,
+    /// same live-apply path, no second place to look for them.
+    private func addCheckbox(_ box: NSButton, label: String, x: CGFloat, to root: NSView) {
+        box.frame = NSRect(x: x, y: 504, width: 170, height: 24)
+        box.target = self
+        box.action = #selector(checkboxChanged(_:))
+        box.setAccessibilityLabel(label)
+        root.addSubview(box)
     }
 
     private func addLabel(_ text: String, frame: NSRect, to root: NSView) {
@@ -245,6 +259,8 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         chipWell.color = OverlayStyle.nsColor(style.chipRGB) ?? .black
         backgroundSlider.doubleValue = style.backgroundOpacity * 100
         chipSlider.doubleValue = style.chipOpacity * 100
+        titleCheckbox.state = style.showsTitle ? .on : .off
+        waveformCheckbox.state = style.showsWaveform ? .on : .off
         spacingSlider.doubleValue = style.lyricSpacing
         mainFontSlider.doubleValue = style.mainFontSize
         detailFontSlider.doubleValue = style.detailFontSize
@@ -259,6 +275,13 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         if sender === backgroundWell { style.backgroundRGB = OverlayStyle.rgbHex(sender.color) }
         if sender === textWell { style.textRGB = OverlayStyle.rgbHex(sender.color) }
         if sender === chipWell { style.chipRGB = OverlayStyle.rgbHex(sender.color) }
+        onStyleChange?(style)
+    }
+
+    @objc private func checkboxChanged(_ sender: NSButton) {
+        let on = sender.state == .on
+        if sender === titleCheckbox { style.showsTitle = on }
+        if sender === waveformCheckbox { style.showsWaveform = on }
         onStyleChange?(style)
     }
 

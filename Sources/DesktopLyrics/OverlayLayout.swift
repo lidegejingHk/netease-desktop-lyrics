@@ -4,8 +4,9 @@ import AppKit
 enum OverlayLayout {
     /// Startup band: the width never changes, while the height follows the lyrics.
     static let lyricSize = NSSize(width: 848, height: 126)
-    /// The lyric band inside the background: 16 pt sides, 80 pt below.
-    static let lyricInset = NSPoint(x: 16, y: 80)
+    /// The lyric band inside the background: 16 pt sides, and below it the 4 pt
+    /// gap plus the full-width waveform rail.
+    static let lyricInset = NSPoint(x: 16, y: 44)
     /// 10 pt top inset plus the 36 pt tool row plus the 4 pt top-row rhythm.
     static let topInset: CGFloat = 50
     static let horizontalInset = lyricInset.x
@@ -15,9 +16,8 @@ enum OverlayLayout {
     /// Guard rails for the band that hugs the content.
     static let bandHeightRange: ClosedRange<CGFloat> = 40...320
 
-    /// Three right-aligned tool icons: lock, style and collapse.
+    /// Three right-aligned tool icons: lock, style and the right-edge pin.
     static let toolbarSize = NSSize(width: 120, height: 36)
-    static let collapsedToolbarSize = NSSize(width: 42, height: 36)
     static let playbackSize = NSSize(width: 132, height: 32)
     static let railSize = NSSize(width: 832, height: 28)
 
@@ -41,24 +41,29 @@ enum OverlayLayout {
         return min(max(height, bandHeightRange.lowerBound), bandHeightRange.upperBound)
     }
 
-    static func toolbarFrame(for lyrics: NSRect, collapsed: Bool = false) -> NSRect {
-        let size = collapsed ? collapsedToolbarSize : toolbarSize
-        return NSRect(origin: ToolbarPlacement.origin(overlay: lyrics, size: size), size: size)
+    static func toolbarFrame(for lyrics: NSRect) -> NSRect {
+        NSRect(origin: ToolbarPlacement.origin(overlay: lyrics, size: toolbarSize),
+               size: toolbarSize)
     }
 
-    /// One truncated title line in the top row, ending before the tool icons.
+    /// One single-line title in the top row, ending before the centered transport
+    /// keys, which in turn end before the tool icons.
     static func titleFrame(for lyrics: NSRect) -> NSRect {
         let outer = outerFrame(for: lyrics)
         let tools = toolbarFrame(for: lyrics)
+        let playback = playbackFrame(for: lyrics)
         let x = outer.minX + titleLeftInset
         return NSRect(x: x, y: tools.midY - titleHeight / 2,
-                      width: max(0, tools.minX - titleGap - x), height: titleHeight)
+                      width: max(0, min(tools.minX, playback.minX) - titleGap - x),
+                      height: titleHeight)
     }
 
+    /// The transport keys ride the top row itself, centered between the song title
+    /// and the tool icons, so the band beneath the lyrics stays a single waveform.
     static func playbackFrame(for lyrics: NSRect) -> NSRect {
-        let outer = outerFrame(for: lyrics)
-        return NSRect(x: outer.midX - playbackSize.width / 2,
-                      y: lyrics.minY - 4 - playbackSize.height,
+        let tools = toolbarFrame(for: lyrics)
+        return NSRect(x: outerFrame(for: lyrics).midX - playbackSize.width / 2,
+                      y: tools.midY - playbackSize.height / 2,
                       width: playbackSize.width, height: playbackSize.height)
     }
 
@@ -74,6 +79,14 @@ enum OverlayLayout {
     static func constrainedOrigin(for lyrics: NSRect, visibleFrames: [NSRect]) -> NSPoint {
         let group = envelope(for: lyrics)
         let safe = OverlayVisibility.origin(for: group, visibleFrames: visibleFrames)
+        return NSPoint(x: lyrics.minX + safe.x - group.minX,
+                       y: lyrics.minY + safe.y - group.minY)
+    }
+
+    /// The pin target: same group geometry, right edge against the display edge.
+    static func snappedRightOrigin(for lyrics: NSRect, visibleFrames: [NSRect]) -> NSPoint {
+        let group = envelope(for: lyrics)
+        let safe = OverlayVisibility.snappedRightOrigin(for: group, visibleFrames: visibleFrames)
         return NSPoint(x: lyrics.minX + safe.x - group.minX,
                        y: lyrics.minY + safe.y - group.minY)
     }

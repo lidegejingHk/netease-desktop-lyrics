@@ -11,6 +11,9 @@ struct OverlayStyle: Equatable {
     var lyricSpacing: Double
     var mainFontSize: Double
     var detailFontSize: Double
+    /// Optional elements: both default to on and are user-switchable.
+    var showsTitle: Bool = true
+    var showsWaveform: Bool = true
 
     static let opacityRange: ClosedRange<Double> = 0...1
     static let spacingRange: ClosedRange<Double> = 0...40
@@ -72,7 +75,9 @@ struct OverlayStyleStore {
             mainFontSize: number("mainFontSize", range: OverlayStyle.mainFontRange,
                                  fallback: fallback.mainFontSize),
             detailFontSize: number("detailFontSize", range: OverlayStyle.detailFontRange,
-                                   fallback: fallback.detailFontSize)
+                                   fallback: fallback.detailFontSize),
+            showsTitle: boolean("showsTitle", fallback: fallback.showsTitle),
+            showsWaveform: boolean("showsWaveform", fallback: fallback.showsWaveform)
         )
     }
 
@@ -99,10 +104,20 @@ struct OverlayStyleStore {
         defaults.set(Self.validNumber(style.detailFontSize, range: OverlayStyle.detailFontRange,
                                       fallback: fallback.detailFontSize),
                      forKey: prefix + "detailFontSize")
+        defaults.set(style.showsTitle, forKey: prefix + "showsTitle")
+        defaults.set(style.showsWaveform, forKey: prefix + "showsWaveform")
     }
 
     private func color(_ name: String, fallback: String) -> String {
         Self.validColor(defaults.string(forKey: prefix + name) ?? fallback, fallback: fallback)
+    }
+
+    /// Only a real boolean is accepted; a number or string stored under the same
+    /// key falls back to the default instead of being read as a truthy value.
+    private func boolean(_ name: String, fallback: Bool) -> Bool {
+        guard let value = defaults.object(forKey: prefix + name) as? NSNumber,
+              CFGetTypeID(value) == CFBooleanGetTypeID() else { return fallback }
+        return value.boolValue
     }
 
     private func number(_ name: String, range: ClosedRange<Double>, fallback: Double) -> Double {

@@ -31,7 +31,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private var shouldStop = false
     private var locked = UserDefaults.standard.bool(forKey: "overlayLocked")
     private var showing = UserDefaults.standard.object(forKey: "overlayShowing") as? Bool ?? true
-    private var collapsed = UserDefaults.standard.bool(forKey: "toolbarCollapsed")
+    private var snappedRight = UserDefaults.standard.bool(forKey: "overlaySnappedRight")
     private let transportQueue = DispatchQueue(label: "local.desktop-lyrics.transport", qos: .userInitiated)
     private var transportTimer: Timer?
     private var transportRequest = 0
@@ -93,19 +93,26 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
            let x = point["x"] as? Double, let y = point["y"] as? Double,
            x.isFinite, y.isFinite {
             let proposed = NSRect(origin: NSPoint(x: x, y: y), size: size)
-            panel.setFrameOrigin(OverlayLayout.constrainedOrigin(
-                for: proposed, visibleFrames: NSScreen.screens.map(\.visibleFrame)))
+            panel.setFrameOrigin(settledOrigin(for: proposed))
         } else if let screen = NSScreen.main {
             let area = screen.visibleFrame
             let target = NSRect(x: area.midX - OverlayLayout.outerSize.width / 2 +
                                    OverlayLayout.lyricInset.x,
                                 y: area.minY + 85 + OverlayLayout.lyricInset.y,
                                 width: size.width, height: size.height)
-            panel.setFrameOrigin(OverlayLayout.constrainedOrigin(
-                for: target, visibleFrames: [area]))
+            panel.setFrameOrigin(settledOrigin(for: target))
         } else {
             panel.center()
         }
+    }
+
+    /// One placement authority for every non-drag move: free positions are clamped
+    /// into the screens, a pinned overlay instead keeps the display's right edge.
+    private func settledOrigin(for lyrics: NSRect) -> NSPoint {
+        let frames = NSScreen.screens.map(\.visibleFrame)
+        return snappedRight
+            ? OverlayLayout.snappedRightOrigin(for: lyrics, visibleFrames: frames)
+            : OverlayLayout.constrainedOrigin(for: lyrics, visibleFrames: frames)
     }
 
     private func configureOuterFrame() {
@@ -128,10 +135,9 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private func configureControls() {
         controls = OverlayControls()
         controls.setLocked(locked)
-        controls.setCollapsed(collapsed)
         controls.onDrag = { [weak self] delta in self?.moveOverlay(by: delta) }
         controls.onToggleLock = { [weak self] in self?.changeLock() }
-        controls.onToggleCollapsed = { [weak self] in self?.changeCollapsed() }
+        controls.onSnapRight = { [weak self] in self?.snapOverlayToRightEdge() }
         controls.onToggleSettings = { [weak self] in self?.showOrHideSettings() }
         controls.onPrevious = { [weak self] in self?.runTransport(.previous) }
         controls.onNext = { [weak self] in self?.runTransport(.next) }
@@ -205,6 +211,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     /// never moves itself, so there is no two-window delegate feedback loop.
     private func moveOverlay(by delta: NSPoint) {
         guard !locked, let panel else { return }
+        releaseRightEdge() // dragging is how the user takes the overlay off the rail
         let proposed = panel.frame.offsetBy(dx: delta.x, dy: delta.y)
         let origin = OverlayLayout.constrainedOrigin(
             for: proposed, visibleFrames: NSScreen.screens.map(\.visibleFrame))
@@ -229,8 +236,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         guard abs(size.height - panel.frame.height) > 0.5 else { return }
         let proposed = NSRect(x: panel.frame.minX, y: panel.frame.maxY - size.height,
                               width: size.width, height: size.height)
-        let origin = OverlayLayout.constrainedOrigin(
-            for: proposed, visibleFrames: NSScreen.screens.map(\.visibleFrame))
+        let origin = settledOrigin(for: proposed)
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
         content?.frame = NSRect(origin: .zero, size: size)
         syncOverlayPosition()
@@ -263,8 +269,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
 
     @objc private func screenParametersChanged(_ notification: Notification) {
         guard panel != nil else { return }
-        let origin = OverlayLayout.constrainedOrigin(
-            for: panel.frame, visibleFrames: NSScreen.screens.map(\.visibleFrame))
+        let origin = settledOrigin(for: panel.frame)
         if origin != panel.frame.origin { panel.setFrameOrigin(origin) }
         updateControlsPosition()
     }
@@ -332,11 +337,22 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         lockItem.title = locked ? "解锁位置（可拖动）" : "锁定位置（点击穿透）"
     }
 
-    private func changeCollapsed() {
-        collapsed.toggle()
-        controls.setCollapsed(collapsed)
-        updateControlsPosition()
-        UserDefaults.standard.set(collapsed, forKey: "toolbarCollapsed")
+    /// The top-right arrow is a magnetic edge, not a collapse: the whole group
+    /// moves onto the current display's right edge and keeps that edge while the
+    /// lyric band resizes. Dragging the overlay releases it.
+    private func snapOverlayToRightEdge() {
+        guard let panel else { return }
+        snappedRight = true
+        UserDefaults.standard.set(true, forKey: "overlaySnappedRight")
+        let origin = settledOrigin(for: panel.frame)
+        if origin != panel.frame.origin { panel.setFrameOrigin(origin) }
+        syncOverlayPosition()
+    }
+
+    private func releaseRightEdge() {
+        guard snappedRight else { return }
+        snappedRight = false
+        UserDefaults.standard.set(false, forKey: "overlaySnappedRight")
     }
 
     @objc private func toggleSettings(_ sender: NSMenuItem) { showOrHideSettings() }
