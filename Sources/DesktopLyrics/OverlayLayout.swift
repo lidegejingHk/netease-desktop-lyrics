@@ -15,9 +15,8 @@ enum OverlayLayout {
     /// Guard rails for the band that hugs the content.
     static let bandHeightRange: ClosedRange<CGFloat> = 40...320
 
-    /// Three right-aligned tool icons: lock, style and collapse.
+    /// Three right-aligned tool icons: lock, style and the right-edge pin.
     static let toolbarSize = NSSize(width: 120, height: 36)
-    static let collapsedToolbarSize = NSSize(width: 42, height: 36)
     static let playbackSize = NSSize(width: 132, height: 32)
     static let railSize = NSSize(width: 832, height: 28)
 
@@ -41,9 +40,9 @@ enum OverlayLayout {
         return min(max(height, bandHeightRange.lowerBound), bandHeightRange.upperBound)
     }
 
-    static func toolbarFrame(for lyrics: NSRect, collapsed: Bool = false) -> NSRect {
-        let size = collapsed ? collapsedToolbarSize : toolbarSize
-        return NSRect(origin: ToolbarPlacement.origin(overlay: lyrics, size: size), size: size)
+    static func toolbarFrame(for lyrics: NSRect) -> NSRect {
+        NSRect(origin: ToolbarPlacement.origin(overlay: lyrics, size: toolbarSize),
+               size: toolbarSize)
     }
 
     /// One truncated title line in the top row, ending before the tool icons.
@@ -74,6 +73,14 @@ enum OverlayLayout {
     static func constrainedOrigin(for lyrics: NSRect, visibleFrames: [NSRect]) -> NSPoint {
         let group = envelope(for: lyrics)
         let safe = OverlayVisibility.origin(for: group, visibleFrames: visibleFrames)
+        return NSPoint(x: lyrics.minX + safe.x - group.minX,
+                       y: lyrics.minY + safe.y - group.minY)
+    }
+
+    /// The pin target: same group geometry, right edge against the display edge.
+    static func snappedRightOrigin(for lyrics: NSRect, visibleFrames: [NSRect]) -> NSPoint {
+        let group = envelope(for: lyrics)
+        let safe = OverlayVisibility.snappedRightOrigin(for: group, visibleFrames: visibleFrames)
         return NSPoint(x: lyrics.minX + safe.x - group.minX,
                        y: lyrics.minY + safe.y - group.minY)
     }
