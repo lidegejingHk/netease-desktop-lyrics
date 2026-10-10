@@ -92,10 +92,11 @@ let defaults = UserDefaults(suiteName: suite)!
 defer { defaults.removePersistentDomain(forName: suite) }
 let store = OverlayStyleStore(defaults: defaults)
 let baseline = store.load()
-check(baseline.backgroundRGB == "#131313", "Default background")
-check(baseline.backgroundOpacity == 0.91, "Default background opacity")
-check(baseline.textRGB == "#FFFFFF", "Default text")
-check(baseline.chipRGB == "#000000", "Default text chip")
+check(baseline.backgroundRGB == "#F6F3EC", "Default background is warm paper")
+check(baseline.backgroundOpacity == 0.97, "Default background opacity")
+check(baseline.textRGB == "#23262C", "Default text is ink")
+check(baseline.chipRGB == "#23262C", "Default text chip is ink")
+check(baseline.accentRGB == "#BF4A2E", "Default accent is cinnabar")
 check(baseline.chipOpacity == 0, "Default text chip is transparent")
 check(baseline.lyricSpacing == 8 && baseline.mainFontSize == 24 && baseline.detailFontSize == 15,
       "Default lyric spacing and font sizes")
@@ -107,6 +108,7 @@ edited.backgroundRGB = "#12ab34"
 edited.backgroundOpacity = 0.25
 edited.textRGB = "#F0E0D0"
 edited.chipRGB = "#345678"
+edited.accentRGB = "#0a5cE1"
 edited.chipOpacity = 0.6
 edited.lyricSpacing = 17
 edited.mainFontSize = 30
@@ -119,6 +121,7 @@ check(restored.backgroundRGB == "#12AB34", "Normalized hex roundtrip")
 check(restored.backgroundOpacity == 0.25, "Background opacity roundtrip")
 check(restored.textRGB == "#F0E0D0", "Text color roundtrip")
 check(restored.chipRGB == "#345678", "Chip color roundtrip")
+check(restored.accentRGB == "#0A5CE1", "Accent colour roundtrip")
 check(restored.chipOpacity == 0.6, "Chip opacity roundtrip")
 check(restored.lyricSpacing == 17 && restored.mainFontSize == 30 && restored.detailFontSize == 20,
       "Spacing and font size roundtrip")
@@ -134,12 +137,14 @@ check(OverlayStyle.nsColor("red") == nil, "Reject names")
 defaults.set("#GG0000", forKey: "overlayStyle.backgroundRGB")
 defaults.set("not-a-color", forKey: "overlayStyle.textRGB")
 defaults.set("#00000G", forKey: "overlayStyle.chipRGB")
+defaults.set("cinnabar", forKey: "overlayStyle.accentRGB")
 defaults.set(Double.nan, forKey: "overlayStyle.backgroundOpacity")
 defaults.set(1.1, forKey: "overlayStyle.chipOpacity")
 let invalid = store.load()
 check(invalid.backgroundRGB == baseline.backgroundRGB, "Invalid background fallback")
 check(invalid.textRGB == baseline.textRGB, "Invalid text fallback")
 check(invalid.chipRGB == baseline.chipRGB, "Invalid chip fallback")
+check(invalid.accentRGB == baseline.accentRGB, "Invalid accent fallback")
 check(invalid.backgroundOpacity == baseline.backgroundOpacity, "NaN fallback")
 check(invalid.chipOpacity == baseline.chipOpacity, "Out of range fallback")
 
@@ -678,9 +683,10 @@ lyricView.show(primary: "合成歌词", secondary: "合成副句")
 lyricView.layout()
 check(near(lyricView.layer!.backgroundColor!.alpha, 0) &&
       lyricView.layer!.borderWidth == 0, "Lyric area draws no second card")
-check(lyricView.subviews.count == 4 &&
-      !lyricView.subviews[0].isHidden && !lyricView.subviews[1].isHidden,
-      "Only the lyric lines and text-sized backings remain in the center region")
+check(lyricView.subviews.count == 5 &&
+      !lyricView.subviews[0].isHidden && !lyricView.subviews[1].isHidden &&
+      !lyricView.subviews[4].isHidden,
+      "The lyric lines, their backings and the sweep layer share the center region")
 check(near(lyricView.subviews[0].layer!.backgroundColor!.alpha, 0.55), "Live chip alpha")
 let primaryLabel = lyricView.subviews[2] as! NSTextField
 let detailLabel = lyricView.subviews[3] as! NSTextField
@@ -689,8 +695,11 @@ let detailChip = lyricView.subviews[1]
 check(near(primaryLabel.frame.midX, lyricView.bounds.midX) &&
       near(detailLabel.frame.midX, lyricView.bounds.midX) &&
       near(primaryChip.frame.midX, lyricView.bounds.midX) &&
-      near(detailChip.frame.midX, lyricView.bounds.midX),
-      "Both lyric lines and text backgrounds center on the complete window width")
+      near(detailChip.frame.midX, lyricView.bounds.midX) &&
+      near(lyricView.subviews[4].frame.midX, lyricView.bounds.midX) &&
+      near(lyricView.subviews[4].frame.minY, primaryLabel.frame.minY) &&
+      near(lyricView.subviews[4].frame.height, primaryLabel.frame.height),
+      "Both lyric lines, their backings and the sweep row center on the window width")
 lyricView.applyStyle(.defaultValue)
 lyricView.layout()
 check(primaryChip.isHidden && detailChip.isHidden,
@@ -778,6 +787,7 @@ check(near(primaryLabel.font!.pointSize, 16) &&
       primaryLabel.stringValue.hasSuffix("…") &&
       primaryLabel.stringValue.components(separatedBy: "\n").count == 2,
       "Extreme lyrics use no more than two rows, minimum font size and an ellipsis")
+
 check(primaryLabel.accessibilityLabel() == String(repeating: "特别长的合成歌词", count: 200),
       "Accessibility still exposes the entire original line")
 lyricView.show(primary: "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}" +
@@ -1047,8 +1057,9 @@ controls.setVisible(false)
 let settings = StyleSettingsPanel(style: .defaultValue)
 let wells = settings.panel.contentView!.subviews.compactMap { $0 as? NSColorWell }
 let sliders = settings.panel.contentView!.subviews.compactMap { $0 as? NSSlider }
-check(wells.count == 3 && sliders.count == 5,
-      "Colour, opacity, spacing and both font sizes are adjustable")
+check(wells.count == 4 && sliders.count == 5 &&
+      wells.contains { $0.accessibilityLabel() == "强调颜色" },
+      "Colours, opacity, spacing and both font sizes are adjustable")
 check(sliders.contains(where: { $0.accessibilityLabel() == "浮层背景不透明度" }),
       "Opacity labels describe the actual slider semantics")
 let toggleBoxes = settings.panel.contentView!.subviews.compactMap { $0 as? NSButton }
@@ -1215,5 +1226,78 @@ check(settings.dismissIfClickingOutside(controls.panel) && !settings.isVisible,
 settings.show(near: toolbarRect, visibleFrames: [screen])
 check(settings.dismissIfClickingOutside(nil) && !settings.isVisible,
       "A click in another app dismisses the style panel")
+
+// The current line can carry its own timing: the sung characters light up while
+// the engine's snapshots arrive every 300 ms, driven by the host's own clock.
+let now = Date().timeIntervalSinceReferenceDate
+lyricView.applyStyle(.defaultValue)
+lyricView.show(primary: "合成歌词", secondary: "合成副句")
+lyricView.layout()
+lyricView.showLine(primary: "合成歌词", secondary: "合成副句",
+                   line: LineTiming(lineStart_ms: 1_000, nextStart_ms: 5_000,
+                                    position_ms: 1_000),
+                   playing: true, now: now)
+lyricView.layout()
+check(lyricView.isSweepActive,
+      "A verified current line with a following timestamp starts its sweep")
+let headCaret = lyricView.sweepCaretOffset ?? -1
+check(headCaret >= 0 && headCaret < primaryLabel.frame.width / 5,
+      "The sweep boundary starts on the first character, not mid-line")
+lyricView.showLine(primary: "合成歌词", secondary: "合成副句",
+                   line: LineTiming(lineStart_ms: 1_000, nextStart_ms: 5_000,
+                                    position_ms: 3_100),
+                   playing: true, now: now)
+lyricView.layout()
+let midCaret = lyricView.sweepCaretOffset ?? -1
+check(midCaret > 0 && midCaret < (primaryLabel.frame.width / 2),
+      "Two characters of four put the boundary inside the first half")
+
+// One clock-driven tick repaints the row without waiting for the next snapshot.
+lyricView.advanceSweepForTesting()
+check(lyricView.isSweepActive,
+      "A clock tick keeps the sweep alive between engine snapshots")
+
+// The boundary walks the row monotonically as the line is sung.
+lyricView.setSweepProgressForTesting(0.25)
+let quarterCaret = lyricView.sweepCaretOffset ?? -1
+lyricView.setSweepProgressForTesting(0.75)
+let threeQuarterCaret = lyricView.sweepCaretOffset ?? -1
+check(quarterCaret > 0 && threeQuarterCaret > quarterCaret &&
+      threeQuarterCaret < primaryLabel.frame.width &&
+      near(primaryLabel.frame.width, primaryLabel.frame.width),
+      "The boundary advances smoothly across the current line")
+
+// A seek far outside the reported line holds the old row instead of guessing.
+lyricView.setSweepProgressForTesting(0.5)
+lyricView.showLine(primary: "合成歌词", secondary: "合成副句",
+                   line: LineTiming(lineStart_ms: 1_000, nextStart_ms: 5_000,
+                                    position_ms: 90_000),
+                   playing: true, now: now)
+lyricView.layout()
+check(!lyricView.isSweepActive,
+      "A stale line holds its sweep until the engine reports the owning line")
+
+// Pausing freezes the sweep at the moment the snapshot arrived.
+lyricView.setSweepProgressForTesting(0.5)
+lyricView.showLine(primary: "合成歌词", secondary: "合成副句",
+                   line: LineTiming(lineStart_ms: 1_000, nextStart_ms: 5_000,
+                                    position_ms: 3_100),
+                   playing: false, now: now)
+lyricView.layout()
+check(!lyricView.isSweepActive,
+      "A paused snapshot never sweeps")
+lyricView.setSweepProgressForTesting(0.5)
+lyricView.showLine(primary: "末句歌词", secondary: "",
+                   line: LineTiming(lineStart_ms: 1_000, nextStart_ms: nil,
+                                    position_ms: 3_100),
+                   playing: true, now: now)
+lyricView.layout()
+check(!lyricView.isSweepActive,
+      "The final line has no following timestamp and never fakes a boundary")
+lyricView.setSweepProgressForTesting(0.5)
+lyricView.show(primary: "等待网易云音乐…", secondary: "")
+lyricView.layout()
+check(!lyricView.isSweepActive && lyricView.sweepCaretOffset == nil,
+      "A status line clears the sweep instead of painting over waiting text")
 
 print("Overlay appearance: all assertions passed")

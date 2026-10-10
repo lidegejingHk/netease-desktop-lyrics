@@ -5,6 +5,8 @@ struct OverlayStyle: Equatable {
     var backgroundRGB: String
     var textRGB: String
     var chipRGB: String
+    /// The warm focal colour: whole-song progress plus the current-line sweep.
+    var accentRGB: String
     var backgroundOpacity: Double
     var chipOpacity: Double
     /// Equal breathing room above and below the visible lyric pair, in points.
@@ -20,16 +22,60 @@ struct OverlayStyle: Equatable {
     static let mainFontRange: ClosedRange<Double> = 14...40
     static let detailFontRange: ClosedRange<Double> = 11...28
 
+    /// The overlay's baseline look: warm paper, ink text and a cinnabar accent.
+    /// "Restore Defaults" reports exactly this style.
     static let defaultValue = OverlayStyle(
-        backgroundRGB: "#131313",
-        textRGB: "#FFFFFF",
-        chipRGB: "#000000",
-        backgroundOpacity: 0.91,
+        backgroundRGB: "#F6F3EC",
+        textRGB: "#23262C",
+        chipRGB: "#23262C",
+        accentRGB: "#BF4A2E",
+        backgroundOpacity: 0.97,
         chipOpacity: 0,
         lyricSpacing: 8,
         mainFontSize: 24,
         detailFontSize: 15
     )
+
+    /// An explicit initializer keeps the memberwise call sites stable while the
+    /// accent stays optional: omitting it selects the theme's own cinnabar.
+    init(backgroundRGB: String, textRGB: String, chipRGB: String,
+         accentRGB: String = "#BF4A2E", backgroundOpacity: Double, chipOpacity: Double,
+         lyricSpacing: Double, mainFontSize: Double, detailFontSize: Double,
+         showsTitle: Bool = true, showsWaveform: Bool = true) {
+        self.backgroundRGB = backgroundRGB
+        self.textRGB = textRGB
+        self.chipRGB = chipRGB
+        self.accentRGB = accentRGB
+        self.backgroundOpacity = backgroundOpacity
+        self.chipOpacity = chipOpacity
+        self.lyricSpacing = lyricSpacing
+        self.mainFontSize = mainFontSize
+        self.detailFontSize = detailFontSize
+        self.showsTitle = showsTitle
+        self.showsWaveform = showsWaveform
+    }
+
+    /// One serif stack drives the current lyric line across languages: the macOS
+    /// Chinese Song faces first, then a serif fallback for a missing system.
+    static let serifFamily = "Songti SC"
+    static var primaryFont: NSFont {
+        NSFont(name: serifFamily, size: 24)
+            ?? NSFont(name: "STSong", size: 24)
+            ?? NSFont.systemFont(ofSize: 24)
+    }
+
+    static func primaryFont(ofSize size: CGFloat, weight: NSFont.Weight) -> NSFont {
+        let base = NSFont(name: serifFamily, size: size)
+            ?? NSFont(name: "STSong", size: size)
+            ?? NSFont.systemFont(ofSize: size, weight: weight)
+        let traits: NSFontTraitMask = weight >= .semibold ? .boldFontMask : []
+        return NSFontManager.shared.convert(base, toHaveTrait: traits)
+    }
+
+    /// The secondary line stays a quiet sans, whatever the display face does.
+    static func secondaryFont(ofSize size: CGFloat, weight: NSFont.Weight) -> NSFont {
+        NSFont.systemFont(ofSize: size, weight: weight)
+    }
 
     static func nsColor(_ rgb: String) -> NSColor? {
         guard rgb.utf8.count == 7, rgb.utf8.first == 35,
@@ -66,6 +112,7 @@ struct OverlayStyleStore {
             backgroundRGB: color("backgroundRGB", fallback: fallback.backgroundRGB),
             textRGB: color("textRGB", fallback: fallback.textRGB),
             chipRGB: color("chipRGB", fallback: fallback.chipRGB),
+            accentRGB: color("accentRGB", fallback: fallback.accentRGB),
             backgroundOpacity: number("backgroundOpacity", range: OverlayStyle.opacityRange,
                                       fallback: fallback.backgroundOpacity),
             chipOpacity: number("chipOpacity", range: OverlayStyle.opacityRange,
@@ -89,6 +136,8 @@ struct OverlayStyleStore {
                      forKey: prefix + "textRGB")
         defaults.set(Self.validColor(style.chipRGB, fallback: fallback.chipRGB),
                      forKey: prefix + "chipRGB")
+        defaults.set(Self.validColor(style.accentRGB, fallback: fallback.accentRGB),
+                     forKey: prefix + "accentRGB")
         defaults.set(Self.validNumber(style.backgroundOpacity, range: OverlayStyle.opacityRange,
                                       fallback: fallback.backgroundOpacity),
                      forKey: prefix + "backgroundOpacity")

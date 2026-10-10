@@ -12,6 +12,9 @@ private struct LyricEvent: Decodable {
     let position_ms: UInt64?
     let duration_ms: UInt64?
     let title: String?
+    /// The current row's own timing, used for the per-line sweep.
+    let line_start_ms: UInt64?
+    let next_start_ms: UInt64?
 }
 
 private final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
@@ -432,13 +435,16 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         // A verified title arrives on its own, after the lyric request answered.
         case "title": outerFrame.show(title: event.title)
         case "intro":
-            content.show(primary: "♪ 即将开始", secondary: event.next ?? "")
+            // The pending first line is a preview, not a timed row: no sweep.
+            content.show(primary: "· · ·", secondary: event.next ?? "")
             rail.show(fraction: wholeSongFraction(event), playing: event.playing == true)
         case "line":
             let subtitle = event.translation?.isEmpty == false
                 ? event.translation! : (event.next ?? "")
             let secondary = event.playing == false ? "Ⅱ  \(subtitle)" : subtitle
-            content.show(primary: event.text ?? "", secondary: secondary)
+            content.showLine(primary: event.text ?? "", secondary: secondary,
+                             line: lineTiming(event), playing: event.playing == true,
+                             now: Date().timeIntervalSinceReferenceDate)
             rail.show(fraction: wholeSongFraction(event), playing: event.playing == true)
         case "unavailable": showStatus(message(for: event.reason))
         default: showStatus("未知的歌词引擎状态")
@@ -459,6 +465,13 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         case "invalid_track_id": return "当前歌曲没有可用于请求歌词的标识"
         default: return "等待可用的播放信息…"
         }
+    }
+
+    /// The verified timing of the row that is playing right now.
+    private func lineTiming(_ event: LyricEvent) -> LineTiming? {
+        guard let start = event.line_start_ms, let position = event.position_ms else { return nil }
+        return LineTiming(lineStart_ms: start, nextStart_ms: event.next_start_ms,
+                          position_ms: position)
     }
 
     /// Whole-song progress from the verified snapshot; the current line never resets it.

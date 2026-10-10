@@ -22,6 +22,9 @@ final class OverlayControls: NSObject {
     private let previousButton = NSButton(title: "", target: nil, action: nil)
     private let playbackButton = NSButton(title: "", target: nil, action: nil)
     private let nextButton = NSButton(title: "", target: nil, action: nil)
+    /// One faint disc per icon: enough for a transparent light-paper overlay to
+    /// read as a control surface, never a second card.
+    private var iconBackdrops: [NSView] = []
     private var isVisible = false
     private var controlsVisible = true
     private var lastOverlay = NSRect.zero
@@ -62,7 +65,16 @@ final class OverlayControls: NSObject {
             case 4: size = NSSize(width: 38, height: 32)
             default: size = NSSize(width: 34, height: 32)
             }
-            controlPanels.append(makeControlPanel(for: view, size: size))
+            let disc = NSView(frame: NSRect(origin: .zero, size: size))
+            disc.wantsLayer = true
+            disc.layer?.cornerRadius = size.height / 2
+            disc.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.30).cgColor
+            disc.layer?.borderWidth = 1
+            disc.layer?.borderColor = NSColor.black.withAlphaComponent(0.05).cgColor
+            let panel = makeControlPanel(for: view, size: size)
+            panel.contentView?.addSubview(disc, positioned: .below, relativeTo: view)
+            iconBackdrops.append(disc)
+            controlPanels.append(panel)
         }
         setPlaybackAvailability(previous: false, toggle: .unavailable, next: false)
     }
@@ -86,6 +98,7 @@ final class OverlayControls: NSObject {
 
     func applyStyle(_ style: OverlayStyle) {
         let tint = OverlayStyle.nsColor(style.textRGB) ?? .white
+        let accent = OverlayStyle.nsColor(style.accentRGB)
         panel.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
         playbackPanel.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
         for button in [lockButton, settingsButton, snapButton,
@@ -93,6 +106,17 @@ final class OverlayControls: NSObject {
             let opacity: CGFloat = button === playbackButton ? 1.0
                 : ((button === previousButton || button === nextButton) ? 0.84 : 0.94)
             button.contentTintColor = tint.withAlphaComponent(opacity)
+        }
+        // Paper discs stay quieter on the tools and step keys, slightly firmer
+        // under the play key, so the focused transport action reads at a glance.
+        for (index, disc) in iconBackdrops.enumerated() {
+            let solid = index == 4
+            disc.layer?.cornerRadius = disc.bounds.height / 2
+            disc.layer?.backgroundColor =
+                NSColor.white.withAlphaComponent(solid ? 0.44 : 0.30).cgColor
+            disc.layer?.borderColor =
+                (solid && accent != nil ? accent! : NSColor.black)
+                .withAlphaComponent(solid ? 0.14 : 0.05).cgColor
         }
     }
 
