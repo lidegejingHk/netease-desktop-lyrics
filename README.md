@@ -67,6 +67,25 @@ open "dist/网易云桌面歌词.app"
 - **桌面浮层（Swift/AppKit）**。不是一张大窗口，而是一组无边框 `NSPanel`：圆角背景＋单行歌名（`OverlayFrameView`）、歌词区（`LyricsView`）、工具条与播放键各自独立的图标命中窗口（`OverlayControls`，7 个图标面板＋2 个透明布局面板）、底部声浪（`WaveformRailView`）。全部位于 floating 层且不激活 App；只有图标接收鼠标事件，锁定后背景、歌词与声浪 `ignoresMouseEvents` 点击穿透。歌词带高度来自与 `layout()` 相同的测量（`LyricBand`），所以字号或留白变化只让浮层下缘移动；控件显隐由 `OverlayHover` 每 0.15 s 比较 `NSEvent.mouseLocation` 与背景范围决定，锁定的浮层收不到跟踪事件，因此不用 `NSTrackingArea`。拖动按位移增量移动，`OverlayVisibility` 约束整块浮层不越出可见屏幕；几何常量集中在 `OverlayLayout.swift` 与 `ToolbarPlacement.swift`，纯函数都有断言测试。样式经共享 `NSColorPanel` 调色后写入 `UserDefaults`。
 - **构建与测试**。`scripts/build-app.sh` 组装 App：Rust release 引擎进 `Contents/Resources/`，`swiftc -O` 编译宿主进 `Contents/MacOS/`，改写 Info.plist 的 bundle id，ad-hoc 签名（引擎单独签 `…engine`）。`./scripts/test-swift.sh` 把宿主源码与 `tests/OverlayAppearanceTests/main.swift` 编成单二进制跑几何与交互断言，`cargo test` 覆盖引擎的日志解析、时间线与歌词逻辑。
 
+## 版本与打包发布
+
+版本号只有一个来源：`app/Info.plist` 的 `CFBundleShortVersionString`。发版时把它与 `Cargo.toml` 的 `version` 一起改，构建出的 App 就是新版本（`scripts/build-app.sh` 直接把该 plist 复制进包内）。
+
+```bash
+# 1) 改版本号（Info.plist: 短版本 + 构造号；Cargo.toml: version）
+# 2) 从 main 构建并打标签
+git tag -a v0.3.0 -m "网易云桌面歌词 v0.3.0" && git push origin v0.3.0
+./scripts/build-app.sh
+# 3) 打包：-X 去掉扩展属性，避免 zip 里混入 __MACOSX 垃圾
+cd dist && zip -q -r -X ~/Desktop/NeteaseDesktopLyrics-v0.3.0-macos-arm64.zip "网易云桌面歌词.app" && cd ..
+# 4) 校验后再发布：解包验签 + 记录 SHA-256，附到 GitHub Release
+unzip -q ~/Desktop/NeteaseDesktopLyrics-v0.3.0-macos-arm64.zip -d /tmp/pkgcheck
+codesign --verify --deep --strict "/tmp/pkgcheck/网易云桌面歌词.app" && shasum -a 256 ~/Desktop/NeteaseDesktopLyrics-v0.3.0-macos-arm64.zip
+gh release create v0.3.0 --title "网易云桌面歌词 v0.3.0" --notes-file notes.md ~/Desktop/NeteaseDesktopLyrics-v0.3.0-macos-arm64.zip
+```
+
+发布说明里附上 SHA-256，与上传的 zip 一致；不要用系统「压缩」生成 zip（会带上 `__MACOSX` 冗余条目）。
+
 ## 诊断与隐私
 
 ```bash
