@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>桌面歌词浮层 · 美化对比版（浮光玻璃 × 墨与纸）</title>
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
+<style>
+  /* ============================================================
+     两种设计方向共用「同一套几何」——与 Swift 源码的布局常量对齐：
+     浮层总宽 876 / 歌词带 848 / 顶行 40 / 波形轨 28 / 左右内边距 16
+     ============================================================ */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #0a0d13;
+    color: #e9edf4;
+    font-family: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+  ::selection { background: rgba(126,231,214,.25); }
+  .scene {
+    min-height: 100vh;
+    position: relative;
+    padding: 44px 0 52px;
+    background:
+      radial-gradient(1100px 560px at 50% -12%, rgba(70,96,140,.28), transparent 62%),
+      radial-gradient(900px 460px at 88% 4%, rgba(52,110,104,.16), transparent 60%),
+      radial-gradient(1000px 700px at 4% 92%, rgba(48,42,74,.24), transparent 65%),
+      #0a0d13;
+  }
+  .scene::after { /* 桌面氛围：极淡噪点，避免“纯数字”的塑料感 */
+    content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  }
+  .stage { width: 920px; margin: 0 auto; position: relative; transform-origin: top center; }
+  .orb { position: fixed; border-radius: 50%; filter: blur(90px); pointer-events: none; }
+  .orb-a { width: 520px; height: 420px; left: 6%; top: 6%; background: rgba(94,172,234,.10); }
+  .orb-b { width: 560px; height: 440px; right: 4%; bottom: 8%; background: rgba(226,166,96,.09); }
+
+  .heads { text-align: center; margin-bottom: 30px; }
+  .heads .t { font-family: "Space Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: .32em; color: #6f7b8d; text-transform: uppercase; }
+  .heads .n { font-family: "Space Mono", ui-monospace, monospace; font-size: 13px; color: #3c4553; margin-top: 8px; letter-spacing: .1em; }
+  .heads .desc { margin-top: 14px; font-size: 12.5px; line-height: 1.9; color: #5d6b7d; }
+  .heads .desc b { color: #90a0b6; font-weight: 500; }
+
+  .frame { position: relative; display: flex; flex-direction: column; align-items: center; }
+  .frame + .frame { margin-top: 26px; }
+  .frame-label { display: flex; align-items: baseline; gap: 14px; margin: 0 auto 16px; width: 100%; padding-left: 8px; }
+  .frame-label .idx { font-family: "Space Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: .3em; color: #5d6b7d; }
+  .frame-label .name { font-size: 13.5px; font-weight: 600; color: #aeb9c9; letter-spacing: .06em; }
+  .frame-label .note { margin-left: auto; font-size: 11.5px; color: #4d5869; letter-spacing: .04em; }
+  .divider { height: 1px; width: 100%; margin: 30px 0 26px; background: linear-gradient(90deg, transparent, rgba(140,160,190,.16) 18%, rgba(140,160,190,.16) 82%, transparent); }
+  .footer-hint { margin-top: 34px; text-align: center; font-family: "Space Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: .12em; color: #46505f; line-height: 2.1; }
+  .footer-hint em { color: #6f7d92; font-style: normal; }
+  .toast { position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%); z-index: 999;
+    background: rgba(16,20,28,.92); border: 1px solid rgba(150,170,200,.18); color: #b9c4d4;
+    font-size: 12px; letter-spacing: .05em; padding: 9px 16px; border-radius: 9px; backdrop-filter: blur(10px);
+    opacity: 0; animation: toastIn 4.5s ease .6s 1 both; pointer-events: none; }
+  @keyframes toastIn { 0% { opacity: 0; transform: translate(-50%, 8px); } 8% { opacity: 1; transform: translate(-50%, 0); } 80% { opacity: 1; } 100% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .wavebar, .lit, .tlit { animation: none !important; }
+    .toast { animation: none; opacity: .9; }
+  }
+
+  /* ================================================================
+     浮层本体 · 两种设计方向共享几何，只换设计语言
+     几何对齐 Swift 源码：876 宽 / 顶行 40 / 大内边距 16 / 轨高 28
+     ================================================================ */
+  .player {
+    --pad: 18px;
+    position: relative; width: 876px; border-radius: 30px;
+    padding: 2px var(--pad) 22px;
+    display: flex; flex-direction: column;
+    transition: box-shadow .5s ease, background .5s ease;
+    user-select: none; -webkit-user-select: none;
+  }
+  .player button { font-family: inherit; }
+  .base, .lit { white-space: pre; }
+
+  /* ---- A · 浮光玻璃 ---- */
+  .lp-a {
+    --ink: #f2f5f9;
+    --ink-2: rgba(233,239,247,.66);
+    --ink-3: rgba(225,232,242,.34);
+    --dim: rgba(225,232,242,.20);
+    --accent: #7ee7d6;
+    --accent-2: #a9b8ff;
+    --edge: rgba(255,255,255,.10);
+    background:
+      radial-gradient(720px 320px at 10% -8%, rgba(102,141,251,.17), transparent 62%),
+      radial-gradient(760px 340px at 92% 112%, rgba(64,203,180,.15), transparent 62%),
+      linear-gradient(168deg, rgba(32,38,54,.92), rgba(13,16,24,.94) 58%, rgba(10,12,19,.96));
+    border: 1px solid rgba(255,255,255,.09);
+    box-shadow:
+      0 42px 90px -34px rgba(3,6,14,.92),
+      0 10px 30px -12px rgba(3,6,14,.6),
+      inset 0 1px 0 rgba(255,255,255,.13),
+      inset 0 0 44px -18px rgba(140,190,255,.20),
+      inset 0 0 0 1px rgba(140,190,255,.04);
+    backdrop-filter: blur(30px) saturate(1.3);
+    -webkit-backdrop-filter: blur(30px) saturate(1.3);
+  }
+  .lp-a.is-playing { box-shadow:
+      0 46px 96px -34px rgba(3,6,14,.95),
+      0 10px 30px -12px rgba(3,6,14,.6),
+      0 0 70px -28px rgba(126,231,214,.5),
+      inset 0 1px 0 rgba(255,255,255,.11),
+      inset 0 0 0 1px rgba(140,190,255,.04); }
+  .lp-a .title .tn { color: var(--ink); }
+  .lp-a .title .ta { color: rgba(225,232,242,.42); }
+  .lp-a .lyric-glow {
+    background:
+      radial-gradient(46% 120% at 50% 54%, rgba(126,231,214,.17), transparent 70%),
+      radial-gradient(30% 90% at 66% 60%, rgba(150,170,255,.13), transparent 70%);
+  }
+  .lp-a .lit, .lp-a .tlit {
+    background-image: linear-gradient(100deg,
+      rgba(126,231,214,0) 0%,
+      rgba(140,236,220,.55) 74%,
+      #d9fff6 90%,
+      #ffffff 97%);
+    background-size: 400% 100%;
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent;
+  }
+  .lp-a .tlit { background-image: linear-gradient(100deg,
+      rgba(126,231,214,0) 0%, rgba(169,184,255,.5) 78%, #e4e9ff 96%); }
+  .lp-a .kmark { background: var(--accent); box-shadow: 0 0 16px 2px rgba(126,231,214,.85); }
+  .lp-a .kshard { box-shadow: 0 18px 52px -26px rgba(126,231,214,.55); }
+  .lp-a .dot::after { background: var(--accent); box-shadow: 0 0 10px 1px rgba(126,231,214,.75); }
+
+  /* ---- B · 墨与纸 ---- */
+  .lp-b {
+    --ink: #23262c;
+    --ink-2: rgba(35,38,44,.62);
+    --ink-3: rgba(35,38,44,.38);
+    --dim: rgba(35,38,44,.22);
+    --accent: #c4553b;
+    --accent-2: #8a8f52;
+    background:
+      radial-gradient(680px 300px at 14% -6%, rgba(255,252,252,.95), transparent 60%),
+      linear-gradient(168deg, #f6f3ec, #efece4 52%, #e9e5da);
+    border: 1px solid rgba(35,38,44,.07);
+    box-shadow:
+      0 46px 92px -36px rgba(6,8,12,.6),
+      0 12px 34px -16px rgba(6,8,12,.32),
+      inset 0 1px 0 rgba(255,255,255,.85);
+  }
+  .lp-b .title .tn { color: var(--ink); }
+  .lp-b .title .ta { color: rgba(35,38,44,.45); }
+  .lp-b .lyric-glow {
+    background: radial-gradient(46% 130% at 50% 52%, rgba(196,85,59,.065), transparent 70%);
+  }
+  .lp-b .lit, .lp-b .tlit {
+    -webkit-mask-image: linear-gradient(100deg,
+      transparent var(--p0, calc(var(--p) - 6%)),
+      #000 var(--p1, calc(var(--p) + 5%)),
+      #000 340%);
+    mask-image: linear-gradient(100deg,
+      transparent var(--p0, calc(var(--p) - 6%)),
+      #000 var(--p1, calc(var(--p) + 5%)),
+      #000 340%);
+    color: var(--ink);
+  }
+  .lp-b .tlit { color: var(--accent); }
+  .lp-b .kmark { background: var(--accent); }
+  .lp-b .kshard { box-shadow: 0 20px 58px -32px rgba(120,60,40,.5); }
+  .lp-b .dot::after { background: var(--accent); box-shadow: none; }
+
+  .lp-b .tool.active { background: rgba(196,85,59,.12); color: var(--accent); }
+  .lp-b .tbtn.pp { background: rgba(255,255,255,.72); box-shadow: 0 10px 24px -12px rgba(20,20,26,.5); }
+
+  /* ==================== 顶行 ==================== */
+  .chrome { height: 52px; display: flex; align-items: center; position: relative; }
+  .title { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+  .title .tn { font-size: 13px; font-weight: 500; letter-spacing: .02em; }
+  .title .ta {
+    font-family: "Space Mono", ui-monospace, monospace;
+    font-size: 11px; letter-spacing: .06em; opacity: .85;
+  }
+  .eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 11px; width: 15px; flex: none; opacity: .95; }
+  .eq i { width: 3px; height: 4px; border-radius: 1px; background: var(--accent); animation: eq 1.25s ease-in-out infinite; }
+  .eq i:nth-child(2) { animation-delay: .32s; }
+  .eq i:nth-child(3) { animation-delay: .71s; }
+  @keyframes eq { 0%,100% { height: 4px; } 45% { height: 11px; } 70% { height: 6px; } }
+
+  .transport { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; }
+  .tbtn {
+    appearance: none; border: 1px solid transparent; background: transparent; cursor: pointer;
+    color: var(--ink-2); width: 34px; height: 34px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background .22s, color .22s, transform .22s, box-shadow .3s;
+  }
+  .tbtn:hover { background: rgba(128,140,165,.12); color: var(--ink); }
+  .tbtn.pp {
+    width: 38px; height: 38px; color: var(--ink);
+    background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.09);
+  }
+  .lp-b .tbtn:hover { background: rgba(35,38,44,.07); color: var(--ink); }
+  .tbtn:active { transform: scale(.94); }
+  .is-playing .tbtn.pp { box-shadow: 0 0 26px -8px rgba(126,231,214,.55); }
+  .lp-b.is-playing .tbtn.pp { box-shadow: 0 10px 26px -12px rgba(20,20,26,.5); }
+
+  .tools { display: flex; align-items: center; gap: 6px; flex: none; }
+  .tool {
+    appearance: none; border: none; background: transparent; cursor: pointer;
+    color: var(--ink-3); width: 30px; height: 30px; border-radius: 9px;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background .2s, color .2s, transform .2s;
+  }
+  .tool:hover { color: var(--ink-2); background: rgba(128,140,165,.12); }
+  .tool:active { transform: scale(.92); }
+  .tool.active { color: var(--accent); background: rgba(126,231,214,.13); }
+
+  /* ==================== 歌词区 ==================== */
+  .lyrics {
+    min-height: 112px; display: flex; flex-direction: column; justify-content: center; align-items: center;
+    position: relative; z-index: 2;
+  }
+  .lyric-glow {
+    position: absolute; inset: 52px 0 50px; opacity: 0;
+    transition: opacity 1s ease; pointer-events: none; z-index: 1;
+  }
+  .is-playing .lyric-glow { opacity: 1; }
+
+  .row { position: relative; display: flex; justify-content: center; text-align: center; width: 100%; }
+  .row .base, .row .litLayer, .row .lit, .row .tlit { white-space: pre; }
+  .row.current { min-height: 46px; align-items: center; padding: 5px 0; --enter: 22px; }
+  .row.next { min-height: 24px; align-items: center; margin-top: 3px; --enter: 13px; }
+
+  .row.current .base, .row.current .karaoke {
+    font-family: "Songti SC", "STSong", "Noto Serif SC", "Source Han Serif SC", serif;
+    font-size: 31px; font-weight: 600; letter-spacing: .025em; line-height: 1.3;
+  }
+  .litLayer .lit { display: inline-block; }
+  .row.current .base { color: var(--ink-3); transition: color .3s; }
+  .row.next .base {
+    font-size: 15.5px; font-weight: 400; letter-spacing: .07em;
+    font-family: "Noto Sans SC", "PingFang SC", sans-serif;
+    color: var(--ink-3); transition: color .35s;
+  }
+  .lp-b .row.current .base, .lp-b .row.current .karaoke { font-weight: 500; letter-spacing: .05em; }
+
+  .litLayer { position: absolute; inset: 0; display: flex; justify-content: center; align-items: center; pointer-events: none; }
+  .row.next .litLayer { transition: opacity .3s; }
+  .row.current.dull .base, .row.current.dull .litLayer { opacity: .7; }
+  .row.current.dull .base { font-size: 15px !important; font-family: "Space Mono", ui-monospace, monospace !important;
+    font-weight: 400 !important; letter-spacing: .42em !important; text-indent: .42em; }
+
+  .row.current > .base, .row.current > .litLayer { animation: enterUp .68s cubic-bezier(.16, 1, .3, 1) both; }
+  .row.next > .base { animation: enterUp .68s cubic-bezier(.16, 1, .3, 1) both; }
+
+  .litLayer .lit .ch { display: inline-block; white-space: pre; }
+  .karaoke { position: relative; display: inline-block; }
+  .kmark {
+    position: absolute; top: 50%; width: 3px; height: 62%; border-radius: 3px;
+    transform: translate(-50%, -50%); pointer-events: none;
+    animation: kPulse 1.9s ease-in-out infinite;
+  }
+  @keyframes kPulse { 0%,100% { opacity: .95; } 50% { opacity: .45; } }
+
+
+  .row.next .tlit { font-size: 16.5px; font-weight: 400; letter-spacing: .06em;
+    font-family: "Noto Sans SC", "PingFang SC", sans-serif; }
+  .row.next .tlit .ch { animation-delay: calc(var(--i, 0) * 14ms); }
+
+  /* 入行过渡：降低 12px、聚焦上浮 + 一次柔光 */
+  @keyframes enterUp {
+    from { opacity: 0; transform: translateY(var(--enter, 20px)); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .kshard { position: absolute; left: 0; right: 0; top: 50%; height: 40px; margin-top: -20px;
+    border-radius: 30px; opacity: 0; pointer-events: none;
+    animation: kshine .9s ease-out .06s both; }
+  @keyframes kshine { 0% { opacity: 0; } 22% { opacity: 1; } 100% { opacity: 0; } }
+
+  /* ==================== 波形轨 ==================== */
+  .railWrap { margin-top: 10px; position: relative; height: 30px; }
+  .rail {
+    position: absolute; inset: 0; flex: none;
+    cursor: pointer; border-radius: 8px;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 46px, #000 calc(100% - 44px), transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 46px, #000 calc(100% - 44px), transparent 100%);
+  }
+  .rail .wave { position: absolute; inset: 0; }
+  .waveInner { position: absolute; inset: 0; display: flex; align-items: center; gap: 2px; }
+  .waveInner.litwrap { will-change: clip-path; }
+  .wavebar {
+    flex: 1 1 0; min-width: 1px; border-radius: 1.5px; transform-origin: 50% 50%;
+    background: var(--dim); will-change: transform;
+    animation: barPulse calc(1.15s + var(--sp) * .55s) ease-in-out infinite;
+    animation-delay: calc(var(--ph) * -1s * .4);
+    animation-play-state: paused;
+  }
+  .waveInner.litwrap .wavebar { background: var(--accent); opacity: .92; }
+  .lp-b .waveInner.litwrap .wavebar { opacity: 1; background: #bf4a2e; }
+  .lp-a .waveInner.litwrap .wavebar { box-shadow: 0 0 9px -2px rgba(126,231,214,.65); }
+  .is-playing .wavebar { animation-play-state: running; }
+  @keyframes barPulse {
+    0%, 100% { transform: scaleY(1); }
+    50% { transform: scaleY(calc(.65 + var(--h) * .75)); }
+  }
+  .railprog {
+    position: absolute; left: 0; bottom: -6px; height: 1.5px; border-radius: 2px;
+    background: var(--accent); opacity: .8; transition: opacity .3s;
+  }
+  .bottomrow {
+    position: absolute; left: 8px; right: 8px; bottom: -7px;
+    display: flex; justify-content: space-between; pointer-events: none;
+  }
+  .tm { font-family: "Space Mono", ui-monospace, monospace; font-size: 10px; letter-spacing: .14em; color: var(--ink-3); }
+  .lp-b .tm { color: rgba(35,38,44,.38); }
+
+
+  /* ==================== 无障碍 / 降级 ==================== */
+  @media (prefers-reduced-motion: reduce) {
+    .eq i, .wavebar, .karaoke::after, .kshard, .row.current > .base,
+    .row.current > .litLayer, .row.next > .base, .tlit .ch { animation: none !important; }
+    .tlit .ch { opacity: 1; filter: none; transform: none; }
+    .kshard { opacity: 0; }
+  }
+
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useRef, useEffect, useMemo, useCallback } = React;
+
+/* ============================== 演示数据 ==============================
+   歌词为示意文案（非真实歌词），可直接替换成你自己的 LRC 时间轴      */
+function demoLyrics(lines) {
+  return lines.map(([start, end, text]) => ({ s: start, e: end, text }));
+}
+const TRACKS = [
+  {
+    title: "七月的海", artist: "林晚", duration: 96000,
+    lyrics: demoLyrics([
+      [7000, 12000, "如果赶得上末班车"],
+      [12000, 17000, "如果那天下过雨"],
+      [17000, 22000, "我们会不会不一样"],
+      [22500, 27500, "约好去看的那片海"],
+      [27500, 33000, "背对背站在原地"],
+      [33000, 38000, "谁也没有先开口"],
+      [38500, 43500, "直到潮水退去 才明白"],
+      [43500, 49000, "有些夏天不会再来"],
+      [49000, 54500, "风把话说得很轻"],
+      [54500, 60000, "浪把名字写得很深"],
+      [60000, 65500, "多年以后 我还站在原地"],
+      [65500, 71000, "等一个不会再来的夏天"],
+      [71000, 77000, "如果能再回到那年夏天"],
+      [77000, 83000, "我想我还是会迟到"],
+    ]),
+  },
+  {
+    title: "On the Wire", artist: "Sable Noir", duration: 88000,
+    lyrics: demoLyrics([
+      [6000, 11000, "Static on the wire tonight"],
+      [11000, 16000, "Every signal fades to white"],
+      [16000, 21500, "I keep your number in the dark"],
+      [21500, 27000, "A flicker waiting for a spark"],
+      [27000, 32500, "Cities hum and satellites"],
+      [32500, 38000, "Trace the shape of sleepless nights"],
+      [38000, 43500, "If you ever cross the light"],
+      [43500, 49000, "Leave a message, I'll be fine"],
+      [49000, 54500, "Distance is a kind of sound"],
+      [54500, 60000, "Low and steady, all year round"],
+      [60000, 66000, "If the line goes quiet, know"],
+      [66000, 72000, "I'm still listening, still listening"],
+    ]),
+  },
+];
+
+/* ============================== 工具函数 ============================== */
+const pad2 = (n) => String(Math.floor(n)).padStart(2, "0");
+const fmtTime = (ms) => {
+  if (!isFinite(ms) || ms < 0) ms = 0;
+  const s = Math.floor(ms / 1000);
+  return pad2(s / 60) + ":" + pad2(s % 60);
+};
+const WAVE_N = 112;
+function makeBars(seed) {
+  const bars = [];
+  for (let i = 0; i < WAVE_N; i++) {
+    const t = i / WAVE_N;
+    let h =
+      Math.abs(Math.sin(t * 19 + seed)) * 0.42 +
+      Math.abs(Math.sin(t * 7.3 + seed * 1.7)) * 0.34 +
+      Math.abs(Math.sin(t * 41 + seed * 2.9)) * 0.16;
+    const envelope = 0.58 + 0.42 * Math.abs(Math.sin(t * Math.PI * 2.2 + seed));
+    bars.push(Math.min(1, Math.max(0.1, h * envelope)));
+  }
+  return bars;
+}
+const BARS = [makeBars(1.35), makeBars(4.1)];
+const MOTION_OK = typeof window !== "undefined" && window.matchMedia
+  ? !window.matchMedia("(prefers-reduced-motion: reduce)").matches : true;
+
+/* ============================== 图标 ============================== */
+const I = {
+  prev: (
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 6.6v10.8L8.4 12z" fill="currentColor" stroke="none" />
+      <path d="M6 6.4v11.2" />
+    </svg>
+  ),
+  next: (
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 6.6v10.8L15.6 12z" fill="currentColor" stroke="none" />
+      <path d="M18 6.4v11.2" />
+    </svg>
+  ),
+  play: (
+    <svg viewBox="0 0 24 24" width="27" height="27">
+      <path d="M8.4 5.9v12.2L18.6 12z" fill="currentColor" />
+    </svg>
+  ),
+  pause: (
+    <svg viewBox="0 0 24 24" width="27" height="27">
+      <rect x="7.4" y="6" width="3.3" height="12" rx="1.5" fill="currentColor" />
+      <rect x="13.3" y="6" width="3.3" height="12" rx="1.5" fill="currentColor" />
+    </svg>
+  ),
+  lock: (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="5.5" y="10.6" width="13" height="8.9" rx="2.4" />
+      <path d="M8.6 10.6V8.1a3.4 3.4 0 0 1 6.8 0v2.5" />
+    </svg>
+  ),
+  palette: (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 4.2c-4.3 0-7.8 3.4-7.8 7.7 0 4.3 3.4 7.7 7.7 7.7 1.7 0 3.1-1 3.1-2.6 0-.9-.4-1.5-.4-2.3 0-1.2 1-1.9 2.2-1.9h1.1c1.9 0 3.3-1.4 3.3-3.3 0-3-3.4-5.3-7.9-5.3z" />
+      <circle cx="8.4" cy="10.1" r="1.05" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="8.2" r="1.05" fill="currentColor" stroke="none" />
+      <circle cx="15.7" cy="10.1" r="1.05" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  chevron: (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9.4 6.6l5.6 5.4-5.6 5.4" />
+    </svg>
+  ),
+};
+
+function Tool({ title, tip, active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      className={"tool" + (active ? " active" : "")}
+      title={tip}
+      aria-label={tip}
+      aria-pressed={!!active}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ============================== 主浮层 ============================== */
+function Player({ variant, tracks, songIndex, setSongIndex, initialPos = 0 }) {
+  const [playing, setPlaying] = useState(true);
+  const [locked, setLocked] = useState(false);
+  const [theme, setTheme] = useState(0);
+    const [pos, setPos] = useState(initialPos);
+
+  const posRef = useRef(initialPos);
+  const playingRef = useRef(true);
+  const prevTrackRef = useRef(songIndex);
+  const railRef = useRef(null);
+  const songIndexRef = useRef(songIndex);
+  useEffect(() => { playingRef.current = playing; }, [playing]);
+  useEffect(() => { songIndexRef.current = songIndex; }, [songIndex]);
+
+  // 切歌：回到开头
+  useEffect(() => {
+    if (prevTrackRef.current !== songIndex) {
+      prevTrackRef.current = songIndex;
+      posRef.current = 0;
+      setPos(0);
+      setPlaying(true);
+    }
+  }, [songIndex]);
+
+  // 播放时钟（rAF 驱动）
+  useEffect(() => {
+    let raf = 0, last = performance.now();
+    const tick = (now) => {
+      const dt = Math.min(64, now - last); last = now;
+      if (playingRef.current) {
+        posRef.current += dt;
+        const dur = tracks[songIndexRef.current].duration;
+        if (posRef.current >= dur + 900) {
+          setSongIndex((songIndexRef.current + 1) % tracks.length);
+        } else {
+          setPos(posRef.current);
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [tracks, setSongIndex]);
+
+  const song = tracks[songIndex];
+  const dur = song.duration;
+  const progress = Math.min(1, Math.max(0, pos / dur));
+
+  // 当前歌词行与行内进度
+  let lineIdx = -1, lineFrac = 0;
+  for (let i = 0; i < song.lyrics.length; i++) {
+    const L = song.lyrics[i];
+    if (pos >= L.s && pos <= L.e) { lineIdx = i; lineFrac = (pos - L.s) / Math.max(1, L.e - L.s); break; }
+    if (pos < L.s) { lineIdx = i - 1; break; }
+  }
+  if (lineIdx === -1 && pos >= song.lyrics[song.lyrics.length - 1].e) lineIdx = song.lyrics.length - 1;
+  const outtro = lineIdx === -1;
+  const line = song.lyrics[Math.max(0, lineIdx)];
+  const next = song.lyrics[lineIdx + 1];
+  const pct = Math.round(lineFrac * 100);
+  const isNewLine = lineFrac < 0.012;
+
+  const toggle = useCallback(() => setPlaying(p => !p), []);
+  const nextTrack = () => setSongIndex((songIndex + 1) % tracks.length);
+  const prevTrack = () => {
+    if (posRef.current > 2200 || songIndex === 0) { posRef.current = 0; setPos(0); }
+    else setSongIndex((songIndex - 1 + tracks.length) % tracks.length);
+  };
+  const seek = (clientX) => {
+    const el = railRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+    posRef.current = f * dur; setPos(posRef.current);
+  };
+
+  const bars = BARS[theme % BARS.length];
+  const playingCls = playing ? " is-playing" : "";
+
+  const karaokeSpans = (line, p) => (
+    <>
+      <span className="base">{line.text}</span>
+      <span className="litLayer">
+        <span className="karaoke" style={{ "--p": p }}>
+          <span className="lit">{line.text}</span>
+          {(p > 3 && p < 98 && playing) ? <span className="kmark" style={{ left: p + "%" }} /> : null}
+        </span>
+      </span>
+    </>
+  );
+
+  return (
+    <div
+      className={"player lp-" + variant + " theme-" + theme + playingCls + ""}
+    >
+      <span className="lyric-glow" aria-hidden="true" />
+
+      {/* 顶行：歌名 · 播放键 · 工具 */}
+      <div className="chrome">
+        <div className="title">
+          <span className="eq" aria-hidden="true"><i /><i /><i /></span>
+          <span className="tn">{song.title}</span>
+          <span className="ta">— {song.artist}</span>
+        </div>
+        <div className="transport">
+          <button type="button" className="tbtn" title="上一首" aria-label="上一首" onClick={prevTrack}>{I.prev}</button>
+          <button type="button" className="tbtn pp" title={playing ? "暂停" : "播放"} aria-label={playing ? "暂停" : "播放"} onClick={toggle}>
+            {playing ? I.pause : I.play}
+          </button>
+          <button type="button" className="tbtn" title="下一首" aria-label="下一首" onClick={nextTrack}>{I.next}</button>
+        </div>
+        <div className="tools">
+          <Tool tip={locked ? "已锁定 · 点击解锁" : "锁定位置"} active={locked} onClick={() => setLocked(v => !v)}>{I.lock}</Tool>
+          <Tool tip="样式面板（演示：切换主题）" onClick={() => setTheme(v => v + 1)}>{I.palette}</Tool>
+          <Tool tip="吸附到屏幕右缘（演示）" onClick={() => {}}>{I.chevron}</Tool>
+        </div>
+      </div>
+
+      {/* 歌词区：当前句 + 下一句 */}
+      <div className="lyrics" key={songIndex}>
+        <div className={"row current" + (outtro ? " dull" : "")} key={"c" + lineIdx}>
+          {!outtro && karaokeSpans(line, pct)}
+          {outtro && <span className="base">{songIndex === 0 ? "· · ·" : "· · ·"}</span>}
+        </div>
+        <div className="row next" key={"n" + (lineIdx + 1)}>
+          <span className="base">{next ? next.text : ""}</span>
+        </div>
+      </div>
+
+      {/* 波形：整首进度 + 跳动 */}
+      <div className="railWrap">
+      <div
+        className="rail"
+        ref={railRef}
+        onPointerDown={(e) => { seek(e.clientX); }}
+        title="点击跳转"
+      >
+        <span className="ticks" aria-hidden="true" />
+        <div className="wave">
+          <div className="waveInner">
+            {bars.map((b, i) => (
+              <i
+                key={i}
+                className={"wavebar q" + (i % 4)}
+                style={{ "--h": b, "--ph": i * 0.45, "--sp": 0.55 + (i % 7) * 0.09, height: (b * 95) + "%" }}
+              />
+            ))}
+          </div>
+          <div className="waveInner litwrap" style={{ clipPath: "inset(0 " + ((1 - progress) * 100) + "% 0 0)" }}>
+            {bars.map((b, i) => (
+              <i
+                key={i}
+                className={"wavebar q" + (i % 4)}
+                style={{ "--h": b, "--ph": i * 0.45, "--sp": 0.55 + (i % 7) * 0.09, height: (b * 95) + "%" }}
+              />
+            ))}
+          </div>
+        </div>
+        <span className="railprog" style={{ width: (progress * 100) + "%" }} />
+      </div>
+      <div className="bottomrow">
+        <span className="tm live">{fmtTime(pos)}</span>
+        <span className="tm total">{fmtTime(dur)}</span>
+      </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================== 缩放舞台 ============================== */
+function Stage({ children }) {
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const onResize = () => {
+      const s = Math.min(1, (window.innerWidth - 48) / 920);
+      setScale(s);
+    };
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return (
+    <div className="stage" style={{ transform: "scale(" + scale + ")" }}>
+      {children}
+    </div>
+  );
+}
+
+function App() {
+  const [songA, setSongA] = useState(0);
+  const [songB, setSongB] = useState(0);
+
+  return (
+    <div className="scene">
+      <span className="orb orb-a" />
+      <span className="orb orb-b" />
+      <Stage>
+        <div className="heads">
+          <div className="t">Netease Desktop Lyrics · Redesign</div>
+          <div className="n">876 × 248 pt · 两种方向对比</div>
+          <div className="desc">
+            同一套交互、同一条时间轴，只换设计语言。<b>鼠标移入浮层</b>唤出控制条；<b>点击波形</b>跳转；右侧三个工具键可点。
+          </div>
+        </div>
+
+        <div className="frame">
+          <div className="frame-label">
+            <span className="idx">Ⅰ</span>
+            <span className="name">浮光玻璃 · 现代通透</span>
+            <span className="note">玻璃层 + 环境晕光 + 暖白主字</span>
+          </div>
+          <Player variant="a" tracks={TRACKS} songIndex={songA} setSongIndex={setSongA} />
+        </div>
+
+        <div className="divider" />
+
+        <div className="frame">
+          <div className="frame-label">
+            <span className="idx">Ⅱ</span>
+            <span className="name">墨与纸 · 东方极简</span>
+            <span className="note">宋体大字 + 留白 + 朱砂点睛</span>
+          </div>
+          <Player variant="b" tracks={TRACKS} songIndex={songB} setSongIndex={setSongB} initialPos={10400} />
+        </div>
+
+        <div className="footer-hint">
+          演示原型 · 歌词为示意文案，可替换为真实 LRC 时间轴<br />
+          <em>点击标题切换歌曲 · 点击波形跳转 · hover 显示控制条</em>
+        </div>
+      </Stage>
+      <div className="toast">提示：把鼠标移到浮层上，控制条会像真机一样浮现</div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
