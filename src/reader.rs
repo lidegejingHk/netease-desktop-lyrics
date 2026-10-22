@@ -24,6 +24,8 @@ pub struct ReadObservation {
     pub raw: RawPlayback,
     /// True only when a newly observed complete `lastPlaying` record was verified.
     pub fresh: bool,
+    /// Modification time of the log that produced this observation.
+    pub observed_log_modified: SystemTime,
 }
 
 #[derive(PartialEq, Eq)]
@@ -36,6 +38,7 @@ pub struct Reader {
     dir: PathBuf,
     cached: Option<RawPlayback>,
     cached_at: Option<Instant>,
+    cached_modified: Option<SystemTime>,
     last_seen: Option<RecordKey>,
 }
 
@@ -45,6 +48,7 @@ impl Reader {
             dir,
             cached: None,
             cached_at: None,
+            cached_modified: None,
             last_seen: None,
         }
     }
@@ -52,18 +56,21 @@ impl Reader {
     pub fn reset(&mut self) {
         self.cached = None;
         self.cached_at = None;
+        self.cached_modified = None;
         self.last_seen = None;
     }
 
     fn recent_cache(&mut self) -> Option<ReadObservation> {
         if self.cached_at.is_some_and(|at| at.elapsed() <= FRESHNESS) {
-            return self
-                .cached
-                .clone()
-                .map(|raw| ReadObservation { raw, fresh: false });
+            return self.cached.clone().map(|raw| ReadObservation {
+                raw,
+                fresh: false,
+                observed_log_modified: self.cached_modified.unwrap_or(SystemTime::UNIX_EPOCH),
+            });
         }
         self.cached = None;
         self.cached_at = None;
+        self.cached_modified = None;
         // Retain the record identity: an old disk record must not become fresh again.
         None
     }
@@ -127,13 +134,103 @@ impl Reader {
             if !fresh(modified, now) {
                 self.cached = None;
                 self.cached_at = None;
+                self.cached_modified = None;
                 return Ok(None);
             }
             self.cached = Some(raw.clone());
             self.cached_at = Some(Instant::now());
-            return Ok(Some(ReadObservation { raw, fresh: true }));
+            self.cached_modified = Some(modified);
+            return Ok(Some(ReadObservation {
+                raw,
+                fresh: true,
+                observed_log_modified: modified,
+            }));
         }
         Ok(self.recent_cache())
+    }
+}
+
+/// Official-site builds migrated their cache here; App Store builds stay in the
+/// sandbox container. Both are read-only candidates, never required to exist.
+pub fn netease_source_dirs(home: &Path) -> Vec<PathBuf> {
+    [
+        "Library/Application Support/com.netease.163music/Documents/storage/CEFCache/Local Storage/leveldb",
+        "Library/Containers/com.netease.163music/Data/Documents/storage/CEFCache/Local Storage/leveldb",
+        "Library/Containers/com.netease.163music/Data/Library/Application Support/com.netease.163music/Documents/storage/CEFCache/Local Storage/leveldb",
+    ]
+    .into_iter()
+    .map(|relative| home.join(relative))
+    .collect()
+}
+
+/// Reads every known client cache location and keeps the freshest verified record.
+/// A missing or stale source never hides a valid one.
+pub struct ReaderSet {
+    readers: Vec<Reader>,
+}
+
+impl ReaderSet {
+    pub fn new(dirs: Vec<PathBuf>) -> Self {
+        Self {
+            readers: dirs.into_iter().map(Reader::new).collect(),
+        }
+    }
+
+    pub fn reset(&mut self) {
+        for reader in &mut self.readers {
+            reader.reset();
+        }
+    }
+
+    pub fn read(&mut self) -> Result<Option<RawPlayback>, ReadError> {
+        self.read_observation()
+            .map(|observation| observation.map(|observed| observed.raw))
+    }
+
+    pub fn read_observation(&mut self) -> Result<Option<ReadObservation>, ReadError> {
+        let mut best: Option<ReadObservation> = None;
+        let mut readable_source = false;
+        let mut first_error = None;
+        for reader in &mut self.readers {
+            match reader.read_observation() {
+                Ok(Some(observation)) => {
+                    readable_source = true;
+                    if best
+                        .as_ref()
+                        .is_none_or(|current| prefer(&observation, current))
+                    {
+                        best = Some(observation);
+                    }
+                }
+                Ok(None) => readable_source = true,
+                Err(ReadError::MissingDirectory) => {}
+                Err(error) => {
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
+                }
+            }
+        }
+        if let Some(observation) = best {
+            return Ok(Some(observation));
+        }
+        // An existing source with no current record is "no song", not a hard
+        // failure merely because another install location is absent.
+        if readable_source {
+            return Ok(None);
+        }
+        if let Some(error) = first_error {
+            return Err(error);
+        }
+        Err(ReadError::MissingDirectory)
+    }
+}
+
+fn prefer(candidate: &ReadObservation, current: &ReadObservation) -> bool {
+    match (candidate.fresh, current.fresh) {
+        (true, false) => true,
+        (false, true) => false,
+        _ => candidate.observed_log_modified > current.observed_log_modified,
     }
 }
 
@@ -163,9 +260,25 @@ fn classify(error: io::Error, directory: bool) -> ReadError {
 
 #[cfg(test)]
 mod tests {
-    use super::{ReadError, Reader};
+    use super::{netease_source_dirs, ReadError, Reader, ReaderSet};
     use crate::{decoder::fixture, leveldb_log::fixture_record};
-    use std::fs;
+    use std::{
+        fs,
+        path::Path,
+        time::{Duration, SystemTime},
+    };
+
+    fn write_source(dir: &Path, track_id: &str, age: Duration) {
+        fs::create_dir_all(dir).unwrap();
+        let path = dir.join("1.log");
+        fs::write(&path, fixture_record(1, &fixture(track_id, 1.0))).unwrap();
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(SystemTime::now() - age)
+            .unwrap();
+    }
     #[test]
     fn missing_directory_is_explicit() {
         let dir = tempfile::tempdir().unwrap();
@@ -423,5 +536,88 @@ mod tests {
             .read()
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn container_source_is_used_when_official_source_is_absent() {
+        let root = tempfile::tempdir().unwrap();
+        let official = root.path().join("official");
+        let container = root.path().join("container");
+        write_source(&container, "container", Duration::ZERO);
+        let mut sources = ReaderSet::new(vec![official, container]);
+        let observed = sources.read_observation().unwrap().unwrap();
+        assert_eq!(observed.raw.track_id, "container");
+        assert!(observed.fresh);
+    }
+
+    #[test]
+    fn stale_container_does_not_beat_fresh_official_source() {
+        let root = tempfile::tempdir().unwrap();
+        let official = root.path().join("official");
+        let container = root.path().join("container");
+        write_source(&official, "official", Duration::from_secs(1));
+        write_source(&container, "container", Duration::from_secs(60));
+        let mut sources = ReaderSet::new(vec![official, container]);
+        let observed = sources.read_observation().unwrap().unwrap();
+        assert_eq!(observed.raw.track_id, "official");
+        assert!(observed.fresh);
+    }
+
+    #[test]
+    fn newest_fresh_source_wins() {
+        let root = tempfile::tempdir().unwrap();
+        let official = root.path().join("official");
+        let container = root.path().join("container");
+        write_source(&official, "official", Duration::from_secs(3));
+        write_source(&container, "container", Duration::ZERO);
+        let mut sources = ReaderSet::new(vec![official, container]);
+        assert_eq!(
+            sources.read_observation().unwrap().unwrap().raw.track_id,
+            "container"
+        );
+    }
+
+    #[test]
+    fn all_sources_missing_reports_missing_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let mut sources = ReaderSet::new(vec![
+            root.path().join("official-missing"),
+            root.path().join("container-missing"),
+        ]);
+        assert!(matches!(
+            sources.read_observation(),
+            Err(ReadError::MissingDirectory)
+        ));
+    }
+
+    #[test]
+    fn existing_empty_source_is_no_song_when_other_path_is_missing() {
+        let root = tempfile::tempdir().unwrap();
+        let empty = root.path().join("empty");
+        fs::create_dir_all(&empty).unwrap();
+        let mut sources = ReaderSet::new(vec![root.path().join("missing"), empty]);
+        assert!(sources.read_observation().unwrap().is_none());
+    }
+
+    #[test]
+    fn reset_clears_every_source() {
+        let root = tempfile::tempdir().unwrap();
+        let official = root.path().join("official");
+        let container = root.path().join("container");
+        write_source(&official, "official", Duration::ZERO);
+        write_source(&container, "container", Duration::ZERO);
+        let mut sources = ReaderSet::new(vec![official, container]);
+        assert!(sources.read_observation().unwrap().unwrap().fresh);
+        sources.reset();
+        assert!(sources.read_observation().unwrap().unwrap().fresh);
+    }
+
+    #[test]
+    fn source_candidates_cover_official_and_container_layouts() {
+        let dirs = netease_source_dirs(Path::new("/Users/example"));
+        assert_eq!(dirs.len(), 3);
+        assert!(dirs[0].ends_with("Library/Application Support/com.netease.163music/Documents/storage/CEFCache/Local Storage/leveldb"));
+        assert!(dirs[1].ends_with("Library/Containers/com.netease.163music/Data/Documents/storage/CEFCache/Local Storage/leveldb"));
+        assert!(dirs[2].ends_with("Library/Containers/com.netease.163music/Data/Library/Application Support/com.netease.163music/Documents/storage/CEFCache/Local Storage/leveldb"));
     }
 }

@@ -4,25 +4,34 @@ use netease_lyrics_rs::{
     lyrics_stream::{Event, LoadRequest, LyricsSession, TitleRequest},
     playback::PlaybackTracker,
     process,
-    reader::Reader,
+    reader::{netease_source_dirs, ReadError, ReaderSet},
     Diagnostic, Snapshot,
 };
 use std::{
-    env,
+    env, fs,
     io::{self, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::mpsc::{self, Receiver, Sender},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
-fn parse(args: &[String]) -> Result<(u64, u64, bool), String> {
-    let (mut samples, mut interval, mut lyrics_json) = (u64::MAX, 500, false);
+#[derive(Debug, PartialEq, Eq)]
+struct Options {
+    samples: u64,
+    interval: u64,
+    lyrics_json: bool,
+    diagnose: bool,
+}
+
+fn parse(args: &[String]) -> Result<Options, String> {
+    let (mut samples, mut interval, mut lyrics_json, mut diagnose) = (u64::MAX, 500, false, false);
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
             "--once" => samples = 1,
             "--lyrics-json" => lyrics_json = true,
+            "--diagnose" => diagnose = true,
             "--samples" | "--interval-ms" => {
                 let flag = &args[i];
                 i += 1;
@@ -44,11 +53,16 @@ fn parse(args: &[String]) -> Result<(u64, u64, bool), String> {
         }
         i += 1;
     }
-    Ok((samples, interval, lyrics_json))
+    Ok(Options {
+        samples,
+        interval,
+        lyrics_json,
+        diagnose,
+    })
 }
 
 fn on_process_discovery_error(
-    reader: &mut Reader,
+    reader: &mut ReaderSet,
     tracker: &mut PlaybackTracker,
     active_pid: &mut Option<i32>,
 ) -> Diagnostic {
@@ -66,7 +80,7 @@ fn ax_diagnostic(error: AxError) -> Diagnostic {
 }
 
 fn sample(
-    reader: &mut Reader,
+    reader: &mut ReaderSet,
     tracker: &mut PlaybackTracker,
     origin: Instant,
     active_pid: &mut Option<i32>,
@@ -177,7 +191,7 @@ fn start_title_request(request: TitleRequest, sender: Sender<TitleResult>) {
 }
 
 fn stream(
-    reader: &mut Reader,
+    reader: &mut ReaderSet,
     tracker: &mut PlaybackTracker,
     active_pid: &mut Option<i32>,
     origin: Instant,
@@ -226,11 +240,74 @@ fn stream(
     }
 }
 
+fn read_error_reason(error: &ReadError) -> &'static str {
+    match error {
+        ReadError::MissingDirectory => "missing_directory",
+        ReadError::MissingField(_) => "missing_field",
+        ReadError::PermissionDenied => "permission_denied",
+        ReadError::FormatChanged => "format_changed",
+        ReadError::Io(_) => "read_failed",
+    }
+}
+
+fn newest_log_age(dir: &Path) -> Option<u64> {
+    fs::read_dir(dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "log"))
+        .filter_map(|entry| entry.metadata().ok())
+        .filter(|metadata| metadata.is_file())
+        .filter_map(|metadata| metadata.modified().ok())
+        .max()
+        .map(|modified| {
+            SystemTime::now()
+                .duration_since(modified)
+                .map_or(0, |age| age.as_secs())
+        })
+}
+
+/// Prints source health only: paths, timestamps and short status codes. Song IDs,
+/// positions and lyrics never leave the machine.
+fn diagnose(home: &Path) {
+    match process::discover() {
+        Ok(pids) => println!(
+            "netease_running={} processes={}",
+            !pids.is_empty(),
+            pids.len()
+        ),
+        Err(_) => println!("netease_process_query=failed"),
+    }
+    let labels = ["official", "container-documents", "container-app-support"];
+    for (index, dir) in netease_source_dirs(home).into_iter().enumerate() {
+        let label = labels.get(index).copied().unwrap_or("source");
+        let exists = dir.is_dir();
+        let age = newest_log_age(&dir);
+        let mut reader = ReaderSet::new(vec![dir]);
+        let result = match reader.read_observation() {
+            Ok(Some(observation)) if observation.fresh => "record=fresh",
+            Ok(Some(_)) => "record=cached",
+            Ok(None) => "record=none",
+            Err(error) => {
+                println!(
+                    "{label} exists={exists} newest_log_age_s={} error={}",
+                    age.map_or_else(|| "none".to_owned(), |age| age.to_string()),
+                    read_error_reason(&error)
+                );
+                continue;
+            }
+        };
+        println!(
+            "{label} exists={exists} newest_log_age_s={} {result}",
+            age.map_or_else(|| "none".to_owned(), |age| age.to_string())
+        );
+    }
+}
+
 fn main() {
-    let (samples, interval, lyrics_json) = match parse(&env::args().skip(1).collect::<Vec<_>>()) {
+    let options = match parse(&env::args().skip(1).collect::<Vec<_>>()) {
         Ok(values) => values,
         Err(error) => {
-            eprintln!("{error}\nusage: netease-lyrics-rs [--once | --samples N] [--interval-ms N] [--lyrics-json]");
+            eprintln!("{error}\nusage: netease-lyrics-rs [--once | --samples N] [--interval-ms N] [--lyrics-json] [--diagnose]");
             std::process::exit(2);
         }
     };
@@ -238,29 +315,33 @@ fn main() {
         eprintln!("HOME is not set");
         std::process::exit(2);
     };
-    let path = PathBuf::from(home).join("Library/Application Support/com.netease.163music/Documents/storage/CEFCache/Local Storage/leveldb");
-    let mut reader = Reader::new(path);
+    let home = PathBuf::from(home);
+    if options.diagnose {
+        diagnose(&home);
+        return;
+    }
+    let mut reader = ReaderSet::new(netease_source_dirs(&home));
     let mut tracker = PlaybackTracker::default();
     let mut active_pid = None;
     let origin = Instant::now();
-    if lyrics_json {
+    if options.lyrics_json {
         stream(
             &mut reader,
             &mut tracker,
             &mut active_pid,
             origin,
-            samples,
-            interval,
+            options.samples,
+            options.interval,
         );
         return;
     }
-    for index in 0..samples {
+    for index in 0..options.samples {
         match sample(&mut reader, &mut tracker, origin, &mut active_pid) {
             Ok(snapshot) => println!("{}", format_snapshot(&snapshot, origin)),
             Err(diagnostic) => println!("unavailable: {diagnostic:?}"),
         }
-        if index + 1 < samples {
-            thread::sleep(Duration::from_millis(interval));
+        if index + 1 < options.samples {
+            thread::sleep(Duration::from_millis(options.interval));
         }
     }
 }
@@ -269,7 +350,7 @@ fn main() {
 mod tests {
     use super::{on_process_discovery_error, parse, write_event};
     use netease_lyrics_rs::lyrics_stream::Event;
-    use netease_lyrics_rs::{playback::PlaybackTracker, reader::Reader, Diagnostic};
+    use netease_lyrics_rs::{playback::PlaybackTracker, reader::ReaderSet, Diagnostic};
     use std::path::PathBuf;
 
     #[test]
@@ -305,7 +386,15 @@ mod tests {
     }
     #[test]
     fn arguments_are_bounded() {
-        assert_eq!(parse(&["--once".into()]).unwrap(), (1, 500, false));
+        assert_eq!(
+            parse(&["--once".into()]).unwrap(),
+            super::Options {
+                samples: 1,
+                interval: 500,
+                lyrics_json: false,
+                diagnose: false,
+            }
+        );
         assert_eq!(
             parse(&[
                 "--samples".into(),
@@ -314,13 +403,24 @@ mod tests {
                 "200".into()
             ])
             .unwrap(),
-            (4, 200, false)
+            super::Options {
+                samples: 4,
+                interval: 200,
+                lyrics_json: false,
+                diagnose: false,
+            }
         );
         assert!(parse(&["--interval-ms".into(), "0".into()]).is_err());
         assert_eq!(
             parse(&["--once".into(), "--lyrics-json".into()]).unwrap(),
-            (1, 500, true)
+            super::Options {
+                samples: 1,
+                interval: 500,
+                lyrics_json: true,
+                diagnose: false,
+            }
         );
+        assert!(parse(&["--diagnose".into()]).unwrap().diagnose);
     }
 
     #[test]
@@ -355,7 +455,7 @@ mod tests {
 
     #[test]
     fn process_query_failure_resets_old_timeline_and_pid() {
-        let mut reader = Reader::new(PathBuf::from("unused"));
+        let mut reader = ReaderSet::new(vec![PathBuf::from("unused")]);
         let mut tracker = PlaybackTracker::default();
         let mut active_pid = Some(42);
         tracker.set_pid(42);
@@ -369,6 +469,7 @@ mod tests {
                         duration_ms: None,
                     },
                     fresh: true,
+                    observed_log_modified: std::time::SystemTime::UNIX_EPOCH,
                 })),
                 0,
             )
