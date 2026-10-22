@@ -1,5 +1,11 @@
 # 网易云音乐 3.1.12 播放状态现场验收
 
+## 2026-10-22 App Store 容器路径修复
+
+用户现场确认：官网版缓存目录 `~/Library/Application Support/com.netease.163music/Documents/storage/CEFCache/Local Storage/leveldb` 不存在；Mac App Store 沙盒容器的 `~/Library/Containers/com.netease.163music/Data/Documents/storage/CEFCache/Local Storage/leveldb` 存在且可读。此前引擎只读前者，因而返回 `missing_directory`，浮层落到兜底文案“等待可用的播放信息…”，但辅助功能暂停控制仍正常。修复后同时读取官网版与容器候选目录，并按最新有效记录选源；旧容器数据不会被当成当前播放。
+
+自动化：`cargo test` **76 passed**，`cargo clippy --all-targets -- -D warnings` 与 `./scripts/test-swift.sh` 通过。开发机 `--diagnose` 已确认能区分官网路径、旧容器路径与缺失路径；App Store 客户端上的端到端歌词显示待对方回验。
+
 日期：2026-09-29。设备：Apple Silicon / macOS 26.6.2。本项目只读，不自动操作网易云客户端；播放内容、账号信息和原始日志不要写进 Git。
 
 命令：

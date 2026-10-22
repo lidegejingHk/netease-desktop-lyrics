@@ -463,7 +463,10 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         case "format_changed": return "网易云本地格式变化，需要重新适配"
         case "missing_field": return "无法读取网易云播放状态"
         case "invalid_track_id": return "当前歌曲没有可用于请求歌词的标识"
-        default: return "等待可用的播放信息…"
+        case "missing_directory": return "未找到网易云播放缓存，请确认客户端版本或安装来源"
+        case "read_failed": return "读取网易云播放缓存失败"
+        case "process_query_failed": return "无法查询网易云进程，请稍后重试"
+        default: return "歌词引擎返回未知状态，请从菜单栏重新打开"
         }
     }
 
