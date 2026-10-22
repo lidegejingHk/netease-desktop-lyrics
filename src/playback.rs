@@ -154,6 +154,7 @@ mod tests {
                 duration_ms: Some(180_000),
             },
             fresh,
+            observed_log_modified: std::time::SystemTime::UNIX_EPOCH,
         })
     }
 
