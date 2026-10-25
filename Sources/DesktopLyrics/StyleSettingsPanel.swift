@@ -74,6 +74,9 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
     private let mainFontSlider = NSSlider(frame: .zero)
     private let detailFontSlider = NSSlider(frame: .zero)
     private let delaySlider = NSSlider(frame: .zero)
+    private let alignmentControl = NSSegmentedControl(labels: ["居中", "左对齐", "右对齐"],
+                                                     trackingMode: .selectOne,
+                                                     target: nil, action: nil)
     private let titleCheckbox = NSButton(checkboxWithTitle: "显示歌曲名", target: nil, action: nil)
     private let waveformCheckbox = NSButton(checkboxWithTitle: "显示声浪", target: nil, action: nil)
     private let backgroundValue = NSTextField(labelWithString: "91%")
@@ -110,6 +113,12 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         panel.contentView = root
         addCheckbox(titleCheckbox, label: "显示歌曲名", x: 22, y: 572, to: root)
         addCheckbox(waveformCheckbox, label: "显示声浪", x: 200, y: 572, to: root)
+        addLabel("歌词对齐", frame: NSRect(x: 22, y: 533, width: 66, height: 22), to: root)
+        alignmentControl.frame = NSRect(x: 92, y: 529, width: 160, height: 26)
+        alignmentControl.target = self
+        alignmentControl.action = #selector(alignmentChanged(_:))
+        alignmentControl.setAccessibilityLabel("歌词对齐方式")
+        root.addSubview(alignmentControl)
         addLabel("浮层背景颜色", frame: NSRect(x: 22, y: 497, width: 190, height: 22), to: root)
         addWell(backgroundWell, label: "浮层背景颜色", y: 492, to: root)
         addLabel("歌词文字颜色", frame: NSRect(x: 22, y: 457, width: 190, height: 22), to: root)
@@ -137,7 +146,8 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         addSlider(detailFontSlider, value: detailFontValue, label: "翻译字号",
                   y: 22, range: OverlayStyle.detailFontRange, scale: 1, to: root)
         let reset = NSButton(title: "恢复默认", target: self, action: #selector(resetToDefaults))
-        reset.frame = NSRect(x: 268, y: 534, width: 92, height: 26)
+        // Share the alignment row's centre and the colour wells' right edge.
+        reset.frame = NSRect(x: 264, y: 529, width: 92, height: 26)
         reset.setAccessibilityLabel("恢复默认歌词样式")
         root.addSubview(reset)
         refreshControls()
@@ -274,6 +284,7 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         mainFontSlider.doubleValue = style.mainFontSize
         detailFontSlider.doubleValue = style.detailFontSize
         delaySlider.doubleValue = style.lyricDelayMs
+        alignmentControl.selectedSegment = LyricAlignment.allCases.firstIndex(of: style.lyricAlignment) ?? 0
         backgroundValue.stringValue = "\(Int((style.backgroundOpacity * 100).rounded()))%"
         chipValue.stringValue = "\(Int((style.chipOpacity * 100).rounded()))%"
         spacingValue.stringValue = "\(Int(style.lyricSpacing.rounded())) pt"
@@ -305,6 +316,13 @@ final class StyleSettingsPanel: NSObject, NSWindowDelegate {
         else if sender === detailFontSlider { style.detailFontSize = sender.doubleValue.rounded() }
         else if sender === delaySlider { style.lyricDelayMs = sender.doubleValue.rounded() }
         refreshControls()
+        onStyleChange?(style)
+    }
+
+    @objc private func alignmentChanged(_ sender: NSSegmentedControl) {
+        let index = sender.selectedSegment
+        guard LyricAlignment.allCases.indices.contains(index) else { return }
+        style.lyricAlignment = LyricAlignment.allCases[index]
         onStyleChange?(style)
     }
 

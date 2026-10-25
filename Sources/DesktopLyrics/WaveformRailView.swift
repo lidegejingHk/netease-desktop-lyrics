@@ -34,7 +34,11 @@ final class WaveformRail {
     }
 
     func follow(lyrics: NSRect) {
-        panel.setFrame(OverlayLayout.railFrame(for: lyrics), display: true)
+        let frame = OverlayLayout.railFrame(for: lyrics)
+        panel.setFrame(frame, display: true)
+        // Match the background: a size update must not constrain an off-screen
+        // waveform back into the display.
+        if panel.frame.origin != frame.origin { panel.setFrameOrigin(frame.origin) }
     }
 
     func applyStyle(_ style: OverlayStyle) {

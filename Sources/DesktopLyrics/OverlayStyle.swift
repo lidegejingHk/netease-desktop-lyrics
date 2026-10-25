@@ -1,6 +1,21 @@
 import AppKit
 import Foundation
 
+/// Horizontal placement of the lyric block inside its band.
+enum LyricAlignment: String, CaseIterable {
+    case center
+    case left
+    case right
+
+    var textAlignment: NSTextAlignment {
+        switch self {
+        case .center: return .center
+        case .left: return .left
+        case .right: return .right
+        }
+    }
+}
+
 struct OverlayStyle: Equatable {
     var backgroundRGB: String
     var textRGB: String
@@ -13,6 +28,8 @@ struct OverlayStyle: Equatable {
     var lyricSpacing: Double
     var mainFontSize: Double
     var detailFontSize: Double
+    /// The lyric block can sit in the middle or hug either side of the band.
+    var lyricAlignment: LyricAlignment
     /// How far the lyric row and its sweep trail the reported position: the
     /// player's clock runs ahead of what is audible, and some lyric files mark
     /// a row's end before the sung line actually finishes. Only the presentation
@@ -48,7 +65,8 @@ struct OverlayStyle: Equatable {
     init(backgroundRGB: String, textRGB: String, chipRGB: String,
          accentRGB: String = "#BF4A2E", backgroundOpacity: Double, chipOpacity: Double,
          lyricSpacing: Double, mainFontSize: Double, detailFontSize: Double,
-         lyricDelayMs: Double = 200, showsTitle: Bool = true, showsWaveform: Bool = true) {
+         lyricDelayMs: Double = 200, lyricAlignment: LyricAlignment = .center,
+         showsTitle: Bool = true, showsWaveform: Bool = true) {
         self.backgroundRGB = backgroundRGB
         self.textRGB = textRGB
         self.chipRGB = chipRGB
@@ -59,6 +77,7 @@ struct OverlayStyle: Equatable {
         self.mainFontSize = mainFontSize
         self.detailFontSize = detailFontSize
         self.lyricDelayMs = lyricDelayMs
+        self.lyricAlignment = lyricAlignment
         self.showsTitle = showsTitle
         self.showsWaveform = showsWaveform
     }
@@ -133,6 +152,7 @@ struct OverlayStyleStore {
                                    fallback: fallback.detailFontSize),
             lyricDelayMs: number("lyricDelayMs", range: OverlayStyle.delayRange,
                                  fallback: fallback.lyricDelayMs),
+            lyricAlignment: alignment("lyricAlignment", fallback: fallback.lyricAlignment),
             showsTitle: boolean("showsTitle", fallback: fallback.showsTitle),
             showsWaveform: boolean("showsWaveform", fallback: fallback.showsWaveform)
         )
@@ -166,6 +186,7 @@ struct OverlayStyleStore {
         defaults.set(Self.validNumber(style.lyricDelayMs, range: OverlayStyle.delayRange,
                                       fallback: fallback.lyricDelayMs),
                      forKey: prefix + "lyricDelayMs")
+        defaults.set(style.lyricAlignment.rawValue, forKey: prefix + "lyricAlignment")
         defaults.set(style.showsTitle, forKey: prefix + "showsTitle")
         defaults.set(style.showsWaveform, forKey: prefix + "showsWaveform")
     }
@@ -186,6 +207,12 @@ struct OverlayStyleStore {
         guard let value = defaults.object(forKey: prefix + name) as? NSNumber,
               CFGetTypeID(value) != CFBooleanGetTypeID() else { return fallback }
         return Self.validNumber(value.doubleValue, range: range, fallback: fallback)
+    }
+
+    private func alignment(_ name: String, fallback: LyricAlignment) -> LyricAlignment {
+        guard let raw = defaults.string(forKey: prefix + name),
+              let value = LyricAlignment(rawValue: raw) else { return fallback }
+        return value
     }
 
     private static func validColor(_ value: String, fallback: String) -> String {
