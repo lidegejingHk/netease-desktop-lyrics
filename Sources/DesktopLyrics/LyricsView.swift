@@ -2,6 +2,9 @@ import AppKit
 
 /// The center region draws text and optional text-sized backings, but no separate card.
 final class LyricsView: NSView {
+    /// Horizontal breathing room between the band edge and the text block.
+    static let horizontalInset: CGFloat = 26
+
     var onDrag: ((NSPoint) -> Void)?
     /// The band height that hugs the visible text with the selected spacing.
     private(set) var desiredBandHeight: CGFloat = OverlayLayout.lyricSize.height
@@ -156,7 +159,7 @@ final class LyricsView: NSView {
 
     /// Both `layout()` and the band height use this one measurement.
     private func measureBand() -> (primary: MeasuredLine, detail: MeasuredLine?) {
-        let inset: CGFloat = 26
+        let inset = Self.horizontalInset
         let bandWidth = max(0, bounds.width - inset * 2)
         let primary = measured(primaryText, in: mainLabel, width: bandWidth,
                                preferredSize: CGFloat(style.mainFontSize),
@@ -191,7 +194,14 @@ final class LyricsView: NSView {
 
     private func place(_ line: MeasuredLine, in label: NSTextField, chip: NSView,
                        bottom: CGFloat, maximumHeight: CGFloat) {
-        label.frame = NSRect(x: bounds.midX - line.width / 2, y: bottom,
+        label.alignment = style.lyricAlignment.textAlignment
+        let x: CGFloat
+        switch style.lyricAlignment {
+        case .center: x = bounds.midX - line.width / 2
+        case .left: x = Self.horizontalInset
+        case .right: x = bounds.maxX - Self.horizontalInset - line.width
+        }
+        label.frame = NSRect(x: x, y: bottom,
                              width: line.width, height: line.height)
         label.font = line.fit.font
         label.stringValue = line.fit.text
@@ -202,6 +212,7 @@ final class LyricsView: NSView {
             sweep.refresh(fit: line.fit, primary: true)
             sweep.frame = NSRect(x: 0, y: label.frame.minY,
                                  width: bounds.width, height: label.frame.height)
+            sweep.setLineLayout(frame: label.frame, alignment: style.lyricAlignment)
         }
 
         chip.isHidden = line.original.isEmpty || style.chipOpacity <= 0
@@ -382,6 +393,8 @@ private final class LyricSweepState {
     var primary = true
     var progress: CGFloat = 0
     var drawnFirstLineWidth: CGFloat = 0
+    var lineFrame: NSRect = .zero
+    var alignment: LyricAlignment = .center
 }
 
 /// Paints only the already-sung characters of the current line, at full ink,
@@ -413,7 +426,7 @@ private final class LyricSweepLayer: NSView {
               let line = (fit.text as NSString).components(separatedBy: "\n").first else { return }
         let lineWidth = state.drawnFirstLineWidth
         guard lineWidth > 0 else { return }
-        let originX = bounds.midX - lineWidth / 2
+        let originX = lineOrigin()
         let available = min(bounds.height, fit.font.ascender - fit.font.descender + 6)
         let rect = NSRect(x: originX, y: (bounds.height - available) / 2,
                           width: lineWidth, height: available)
@@ -431,14 +444,25 @@ private final class LyricSweepLayer: NSView {
     }
 
     /// The leading x of a row drawn with the same width rule the label uses.
-    private func lineOrigin(_ fit: FittedLyric) -> CGFloat {
-        bounds.midX - state.drawnFirstLineWidth / 2
+    private func lineOrigin() -> CGFloat {
+        switch state.alignment {
+        case .center: return state.lineFrame.midX - state.drawnFirstLineWidth / 2
+        case .left: return state.lineFrame.minX
+        case .right: return state.lineFrame.maxX - state.drawnFirstLineWidth
+        }
     }
 
     func refresh(fit: FittedLyric?, primary: Bool) {
         state.fit = fit
         state.primary = primary
-        state.drawnFirstLineWidth = fit?.drawnFirstLineWidth ?? 0
+        state.drawnFirstLineWidth = fit?.lineWidths.first ?? fit?.drawnFirstLineWidth ?? 0
+        needsDisplay = true
+    }
+
+    /// The label's final frame decides which edge the sweep starts from.
+    func setLineLayout(frame: NSRect, alignment: LyricAlignment) {
+        state.lineFrame = frame
+        state.alignment = alignment
         needsDisplay = true
     }
 
