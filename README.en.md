@@ -56,7 +56,7 @@ Two processes and five channels (deeper notes on overlay geometry, control revea
 2. **Playback state (Rust)**: parses Netease's Local Storage LevelDB log read-only, cross-checked against the Control menu read through Accessibility; a monotonic clock estimates the position and freezes while paused.
 3. **Lyrics and title (Rust)**: after verifying a numeric track ID, requests lyrics and song details through the system `curl` (HTTPS only); no account cookies, nothing written to disk, cache lives only in the process.
 4. **Transport (Swift)**: matches the single enabled, AXPress-capable item in Netease's Control menu and presses it (0.35 s timeout) — never a blind click into the player window.
-5. **Overlay (Swift/AppKit)**: a set of borderless `NSPanel`s: rounded background, lyric band, toolbar and transport keys, bottom waveform. When locked, the background and lyrics are click-through while the controls stay usable; the controls follow the pointer.
+5. **Overlay (Swift/AppKit)**: a set of borderless `NSPanel`s: rounded background, lyric band, toolbar and transport keys, bottom waveform. When locked, the whole overlay is click-through except the lock/unlock key; the controls follow the pointer.
 
 ## 4. Demo
 

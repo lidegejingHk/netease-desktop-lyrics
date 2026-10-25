@@ -19,6 +19,7 @@ final class OverlayFrame {
     private var currentTitle = ""
     private var titleRowVisible = true
     private var style = OverlayStyle.defaultValue
+    private var lastLyrics = NSRect.zero
     var onDrag: ((NSPoint) -> Void)? {
         didSet { background.onDrag = onDrag }
     }
@@ -54,7 +55,13 @@ final class OverlayFrame {
     }
 
     func follow(lyrics: NSRect) {
-        panel.setFrame(OverlayLayout.outerFrame(for: lyrics), display: true)
+        lastLyrics = lyrics
+        let frame = OverlayLayout.outerFrame(for: lyrics, showsWaveform: style.showsWaveform)
+        panel.setFrame(frame, display: true)
+        // AppKit constrains a frame that is entirely beyond a display when its
+        // size is set. Restore the exact origin afterwards so a background being
+        // dragged off screen never remains as a strip at the display edge.
+        if panel.frame.origin != frame.origin { panel.setFrameOrigin(frame.origin) }
         sheen.frame = background.bounds
         layoutTitle(for: lyrics)
     }
@@ -79,7 +86,7 @@ final class OverlayFrame {
     }
 
     private func layoutTitle(for lyrics: NSRect) {
-        let outer = OverlayLayout.outerFrame(for: lyrics)
+        let outer = OverlayLayout.outerFrame(for: lyrics, showsWaveform: style.showsWaveform)
         titleView.frame = OverlayLayout.titleFrame(for: lyrics)
             .offsetBy(dx: -outer.minX, dy: -outer.minY)
     }
@@ -101,6 +108,8 @@ final class OverlayFrame {
             NSColor.white.withAlphaComponent(0.22 * surface).cgColor
         titleView.applyStyle(style)
         refreshTitleRow()
+        guard lastLyrics != .zero else { return }
+        follow(lyrics: lastLyrics)
     }
 
     func setLocked(_ locked: Bool) {

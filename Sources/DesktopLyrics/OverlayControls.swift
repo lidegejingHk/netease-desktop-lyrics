@@ -11,14 +11,14 @@ final class OverlayControls: NSObject {
     var onDrag: ((NSPoint) -> Void)?
     var onToggleLock: (() -> Void)?
     var onToggleSettings: (() -> Void)?
-    var onSnapRight: (() -> Void)?
+    var onQuit: (() -> Void)?
     var onPrevious: (() -> Void)?
     var onTogglePlayback: (() -> Void)?
     var onNext: (() -> Void)?
 
     private let lockButton = NSButton(title: "", target: nil, action: nil)
     private let settingsButton = NSButton(title: "", target: nil, action: nil)
-    private let snapButton = NSButton(title: "", target: nil, action: nil)
+    private let quitButton = NSButton(title: "", target: nil, action: nil)
     private let previousButton = NSButton(title: "", target: nil, action: nil)
     private let playbackButton = NSButton(title: "", target: nil, action: nil)
     private let nextButton = NSButton(title: "", target: nil, action: nil)
@@ -27,6 +27,7 @@ final class OverlayControls: NSObject {
     private var iconBackdrops: [NSView] = []
     private var isVisible = false
     private var controlsVisible = true
+    private var locked = false
     private var lastOverlay = NSRect.zero
 
     override init() {
@@ -53,11 +54,11 @@ final class OverlayControls: NSObject {
 
         makeButton(lockButton, symbol: "lock.open", fallback: "◇", label: "锁定歌词位置", action: #selector(toggleLock))
         makeButton(settingsButton, symbol: "paintpalette", fallback: "◐", label: "设置歌词样式", action: #selector(toggleSettings))
-        makeButton(snapButton, symbol: "chevron.right", fallback: "→", label: "吸附到屏幕右边", action: #selector(snapToRightEdge))
+        makeButton(quitButton, symbol: "xmark", fallback: "×", label: "退出桌面歌词", action: #selector(quit))
         makeButton(previousButton, symbol: "backward.end.fill", fallback: "❮", label: "上一首", action: #selector(previousTrack))
         makeButton(playbackButton, symbol: "play.fill", fallback: "▶", label: "播放", action: #selector(togglePlayback))
         makeButton(nextButton, symbol: "forward.end.fill", fallback: "❯", label: "下一首", action: #selector(nextTrack))
-        for (index, view) in [lockButton, settingsButton, snapButton,
+        for (index, view) in [lockButton, settingsButton, quitButton,
                               previousButton, playbackButton, nextButton].enumerated() {
             let size: NSSize
             switch index {
@@ -101,7 +102,7 @@ final class OverlayControls: NSObject {
         let accent = OverlayStyle.nsColor(style.accentRGB)
         panel.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
         playbackPanel.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
-        for button in [lockButton, settingsButton, snapButton,
+        for button in [lockButton, settingsButton, quitButton,
                        previousButton, playbackButton, nextButton] {
             let opacity: CGFloat = button === playbackButton ? 1.0
                 : ((button === previousButton || button === nextButton) ? 0.84 : 0.94)
@@ -155,11 +156,9 @@ final class OverlayControls: NSObject {
         previousButton.isEnabled = previous
         nextButton.isEnabled = next
         playbackButton.isEnabled = toggle != .unavailable
-        // The transparent layout surface never intercepts clicks. A disabled
-        // icon should behave likewise, particularly when the frame is locked.
-        for (index, button) in [(3, previousButton), (4, playbackButton), (5, nextButton)] {
-            controlPanels[index].ignoresMouseEvents = !button.isEnabled
-        }
+        // The transparent layout surface never intercepts clicks. Disabled
+        // icons and every icon during lock behave the same way.
+        refreshHitTesting()
         let shouldPause = toggle == .pause
         let label = shouldPause ? "暂停" : "播放"
         playbackButton.toolTip = label
@@ -168,12 +167,25 @@ final class OverlayControls: NSObject {
                     fallback: shouldPause ? "Ⅱ" : "▶")
     }
 
-    /// Locking changes the lyric and background hit targets only, never the tools.
+    /// Locking passes every overlay element through except the unlock key itself,
+    /// so the overlay never traps the pointer while still offering an on-screen
+    /// way out. The status-bar menu remains a second unlock path.
     func setLocked(_ locked: Bool) {
+        self.locked = locked
         let label = locked ? "解锁歌词位置" : "锁定歌词位置"
         lockButton.toolTip = label
         lockButton.setAccessibilityLabel(label)
         updateImage(lockButton, symbol: locked ? "lock" : "lock.open", fallback: locked ? "◆" : "◇")
+        refreshHitTesting()
+        updateVisiblePanels()
+    }
+
+    private func refreshHitTesting() {
+        let buttons = [lockButton, settingsButton, quitButton,
+                       previousButton, playbackButton, nextButton]
+        for (window, button) in zip(controlPanels, buttons) {
+            window.ignoresMouseEvents = !button.isEnabled || (locked && button !== lockButton)
+        }
     }
 
     func follow(overlay: NSRect) {
@@ -209,19 +221,25 @@ final class OverlayControls: NSObject {
         let onScreen = isVisible && controlsVisible
         if onScreen {
             panel.orderFrontRegardless()
-            playbackPanel.orderFrontRegardless()
         } else {
             panel.orderOut(nil)
+        }
+        if onScreen && !locked {
+            playbackPanel.orderFrontRegardless()
+        } else {
             playbackPanel.orderOut(nil)
         }
-        for window in controlPanels {
-            if onScreen { window.orderFrontRegardless() } else { window.orderOut(nil) }
+        for (index, window) in controlPanels.enumerated() {
+            // A locked overlay exposes only its unlock key; everything else is
+            // visually and physically out of the pointer's way.
+            let shown = onScreen && (!locked || index == 0)
+            if shown { window.orderFrontRegardless() } else { window.orderOut(nil) }
         }
     }
 
     @objc private func toggleLock() { onToggleLock?() }
     @objc private func toggleSettings() { onToggleSettings?() }
-    @objc private func snapToRightEdge() { onSnapRight?() }
+    @objc private func quit() { onQuit?() }
     @objc private func previousTrack() { if previousButton.isEnabled { onPrevious?() } }
     @objc private func togglePlayback() { if playbackButton.isEnabled { onTogglePlayback?() } }
     @objc private func nextTrack() { if nextButton.isEnabled { onNext?() } }

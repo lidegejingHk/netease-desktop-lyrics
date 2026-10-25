@@ -29,6 +29,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private var controls: OverlayControls!
     private var settingsWindow: StyleSettingsPanel!
     private let styleStore = OverlayStyleStore()
+    private var style = OverlayStyle.defaultValue
     private let launchMode = DesktopLaunchMode(arguments: ProcessInfo.processInfo.arguments)
     private var bridge: Process?
     private var shouldStop = false
@@ -47,6 +48,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        style = styleStore.load()
         configureWindow()
         configureOuterFrame()
         configureRail()
@@ -86,7 +88,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         content = LyricsView(frame: frame)
         content.onDrag = { [weak self] delta in self?.moveOverlay(by: delta) }
         panel.contentView = content
-        content.applyStyle(styleStore.load())
+        content.applyStyle(style)
         let size = NSSize(width: frame.width,
                           height: OverlayLayout.clampedBandHeight(content.desiredBandHeight))
         panel.setContentSize(size)
@@ -103,24 +105,26 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
                                    OverlayLayout.lyricInset.x,
                                 y: area.minY + 85 + OverlayLayout.lyricInset.y,
                                 width: size.width, height: size.height)
-            panel.setFrameOrigin(settledOrigin(for: target))
+            panel.setFrameOrigin(OverlayLayout.constrainedOrigin(
+                for: target, visibleFrames: [area], showsWaveform: style.showsWaveform))
         } else {
             panel.center()
         }
     }
 
-    /// One placement authority for every non-drag move: free positions are clamped
-    /// into the screens, a pinned overlay instead keeps the display's right edge.
+    /// One placement authority for every non-drag move: a free position is kept
+    /// exactly where the user put it, including outside every display; a pinned
+    /// overlay instead keeps the display's right edge.
     private func settledOrigin(for lyrics: NSRect) -> NSPoint {
-        let frames = NSScreen.screens.map(\.visibleFrame)
-        return snappedRight
-            ? OverlayLayout.snappedRightOrigin(for: lyrics, visibleFrames: frames)
-            : OverlayLayout.constrainedOrigin(for: lyrics, visibleFrames: frames)
+        OverlayLayout.settledOrigin(for: lyrics,
+                                    visibleFrames: NSScreen.screens.map(\.visibleFrame),
+                                    snappedRight: snappedRight,
+                                    showsWaveform: style.showsWaveform)
     }
 
     private func configureOuterFrame() {
         outerFrame = OverlayFrame()
-        outerFrame.applyStyle(styleStore.load())
+        outerFrame.applyStyle(style)
         outerFrame.setLocked(locked)
         outerFrame.onDrag = { [weak self] delta in self?.moveOverlay(by: delta) }
         outerFrame.follow(lyrics: panel.frame)
@@ -130,7 +134,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
 
     private func configureRail() {
         rail = WaveformRail()
-        rail.applyStyle(styleStore.load())
+        rail.applyStyle(style)
         rail.follow(lyrics: panel.frame)
         rail.setVisible(showing)
     }
@@ -140,8 +144,8 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         controls.setLocked(locked)
         controls.onDrag = { [weak self] delta in self?.moveOverlay(by: delta) }
         controls.onToggleLock = { [weak self] in self?.changeLock() }
-        controls.onSnapRight = { [weak self] in self?.snapOverlayToRightEdge() }
         controls.onToggleSettings = { [weak self] in self?.showOrHideSettings() }
+        controls.onQuit = { NSApp.terminate(nil) }
         controls.onPrevious = { [weak self] in self?.runTransport(.previous) }
         controls.onNext = { [weak self] in self?.runTransport(.next) }
         controls.onTogglePlayback = { [weak self] in
@@ -152,15 +156,17 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
             case .unavailable: break
             }
         }
-        settingsWindow = StyleSettingsPanel(style: styleStore.load())
+        settingsWindow = StyleSettingsPanel(style: style)
         settingsWindow.onStyleChange = { [weak self] style in
-            self?.styleStore.save(style)
-            self?.content.applyStyle(style)
-            self?.outerFrame.applyStyle(style)
-            self?.controls.applyStyle(style)
-            self?.rail.applyStyle(style)
+            guard let self else { return }
+            self.style = style
+            self.styleStore.save(style)
+            self.content.applyStyle(style)
+            self.outerFrame.applyStyle(style)
+            self.controls.applyStyle(style)
+            self.rail.applyStyle(style)
         }
-        controls.applyStyle(styleStore.load())
+        controls.applyStyle(style)
         updateControlsPosition()
         if showing { controls.setVisible(true) }
     }
@@ -216,8 +222,9 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         guard !locked, let panel else { return }
         releaseRightEdge() // dragging is how the user takes the overlay off the rail
         let proposed = panel.frame.offsetBy(dx: delta.x, dy: delta.y)
-        let origin = OverlayLayout.constrainedOrigin(
-            for: proposed, visibleFrames: NSScreen.screens.map(\.visibleFrame))
+        let origin = OverlayLayout.settledOrigin(
+            for: proposed, visibleFrames: NSScreen.screens.map(\.visibleFrame),
+            snappedRight: false, showsWaveform: style.showsWaveform)
         guard origin != panel.frame.origin else { return }
         panel.setFrameOrigin(origin)
         syncOverlayPosition()
@@ -231,7 +238,7 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     }
 
     /// The band hugs the lyric text: the top of the group stays put while only the
-    /// lower edge moves, then the whole group is re-clamped into the screens.
+    /// lower edge moves. A free position stays free, even beyond every display.
     private func applyBandHeight(_ height: CGFloat) {
         guard let panel else { return }
         let size = NSSize(width: panel.frame.width,
@@ -240,7 +247,9 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         let proposed = NSRect(x: panel.frame.minX, y: panel.frame.maxY - size.height,
                               width: size.width, height: size.height)
         let origin = settledOrigin(for: proposed)
-        panel.setFrame(NSRect(origin: origin, size: size), display: true)
+        let frame = NSRect(origin: origin, size: size)
+        panel.setFrame(frame, display: true)
+        if panel.frame.origin != origin { panel.setFrameOrigin(origin) }
         content?.frame = NSRect(origin: .zero, size: size)
         syncOverlayPosition()
     }
@@ -249,7 +258,8 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     /// through, so tracking areas would never report the pointer.
     private func refreshControlReveal() {
         guard let panel, let controls, let outerFrame, showing else { return }
-        let envelope = OverlayLayout.envelope(for: panel.frame)
+        let envelope = OverlayLayout.envelope(for: panel.frame,
+                                              showsWaveform: style.showsWaveform)
         let inside = OverlayHover.inside(point: NSEvent.mouseLocation, envelope: envelope)
         let visible = hover.update(now: ProcessInfo.processInfo.systemUptime, inside: inside)
         controls.setControlsVisible(visible)
@@ -293,6 +303,9 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         let settings = NSMenuItem(title: "歌词样式…", action: #selector(toggleSettings(_:)), keyEquivalent: "")
         settings.target = self
         menu.addItem(settings)
+        let snap = NSMenuItem(title: "吸附到屏幕右边", action: #selector(snapToRightEdge(_:)), keyEquivalent: "")
+        snap.target = self
+        menu.addItem(snap)
         retryTransportItem = NSMenuItem(title: "播放控制失败，重新检查…",
                                         action: #selector(retryTransport(_:)), keyEquivalent: "")
         retryTransportItem.target = self
@@ -336,13 +349,16 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         panel.ignoresMouseEvents = locked
         outerFrame.setLocked(locked)
         controls.setLocked(locked)
+        if locked { settingsWindow?.close() }
         UserDefaults.standard.set(locked, forKey: "overlayLocked")
         lockItem.title = locked ? "解锁位置（可拖动）" : "锁定位置（点击穿透）"
     }
 
-    /// The top-right arrow is a magnetic edge, not a collapse: the whole group
-    /// moves onto the current display's right edge and keeps that edge while the
-    /// lyric band resizes. Dragging the overlay releases it.
+    @objc private func snapToRightEdge(_ sender: NSMenuItem) { snapOverlayToRightEdge() }
+
+    /// The menu command is a magnetic edge, not a collapse: the whole group moves
+    /// onto the current display's right edge and keeps that edge while the lyric
+    /// band resizes. Dragging the overlay releases it.
     private func snapOverlayToRightEdge() {
         guard let panel else { return }
         snappedRight = true

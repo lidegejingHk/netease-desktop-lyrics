@@ -10,13 +10,16 @@ enum OverlayLayout {
     /// 10 pt top inset plus the 36 pt tool row plus the 4 pt top-row rhythm.
     static let topInset: CGFloat = 50
     static let horizontalInset = lyricInset.x
-    static let bottomInset = lyricInset.y
+    static let waveformBottomInset = lyricInset.y
+    /// Without a waveform the rail's 44 pt slot would be an empty strip. Keep
+    /// only a small rim below the lyric band in that case.
+    static let compactBottomInset: CGFloat = 8
     static let outerSize = NSSize(width: lyricSize.width + 2 * horizontalInset,
-                                  height: lyricSize.height + topInset + bottomInset)
+                                  height: lyricSize.height + topInset + waveformBottomInset)
     /// Guard rails for the band that hugs the content.
     static let bandHeightRange: ClosedRange<CGFloat> = 40...320
 
-    /// Three right-aligned tool icons: lock, style and the right-edge pin.
+    /// Three right-aligned tool icons: lock, style and quit.
     static let toolbarSize = NSSize(width: 120, height: 36)
     static let playbackSize = NSSize(width: 132, height: 32)
     static let railSize = NSSize(width: 832, height: 28)
@@ -28,10 +31,15 @@ enum OverlayLayout {
     static let titleGap: CGFloat = 12
     static let titleHeight: CGFloat = 18
 
-    static func outerFrame(for lyrics: NSRect) -> NSRect {
-        NSRect(x: lyrics.minX - horizontalInset, y: lyrics.minY - bottomInset,
+    static func bottomInset(showsWaveform: Bool) -> CGFloat {
+        showsWaveform ? waveformBottomInset : compactBottomInset
+    }
+
+    static func outerFrame(for lyrics: NSRect, showsWaveform: Bool = true) -> NSRect {
+        let bottom = bottomInset(showsWaveform: showsWaveform)
+        return NSRect(x: lyrics.minX - horizontalInset, y: lyrics.minY - bottom,
                width: lyrics.width + 2 * horizontalInset,
-               height: lyrics.height + topInset + bottomInset)
+               height: lyrics.height + topInset + bottom)
     }
 
     /// A measured band height, bounded so a pathological measurement cannot
@@ -74,18 +82,35 @@ enum OverlayLayout {
     }
 
     /// The outer background contains every content zone.
-    static func envelope(for lyrics: NSRect) -> NSRect { outerFrame(for: lyrics) }
+    static func envelope(for lyrics: NSRect, showsWaveform: Bool = true) -> NSRect {
+        outerFrame(for: lyrics, showsWaveform: showsWaveform)
+    }
 
-    static func constrainedOrigin(for lyrics: NSRect, visibleFrames: [NSRect]) -> NSPoint {
-        let group = envelope(for: lyrics)
+    static func constrainedOrigin(for lyrics: NSRect, visibleFrames: [NSRect],
+                                  showsWaveform: Bool = true) -> NSPoint {
+        let group = envelope(for: lyrics, showsWaveform: showsWaveform)
         let safe = OverlayVisibility.origin(for: group, visibleFrames: visibleFrames)
         return NSPoint(x: lyrics.minX + safe.x - group.minX,
                        y: lyrics.minY + safe.y - group.minY)
     }
 
+    /// A free position is intentionally unbounded: dragging can park the
+    /// complete overlay beyond a display edge. Only the explicit right-edge snap
+    /// pulls a freed overlay back on screen, so the menu-bar command remains the
+    /// recovery path.
+    static func settledOrigin(for lyrics: NSRect, visibleFrames: [NSRect],
+                              snappedRight: Bool,
+                              showsWaveform: Bool = true) -> NSPoint {
+        snappedRight
+            ? snappedRightOrigin(for: lyrics, visibleFrames: visibleFrames,
+                                 showsWaveform: showsWaveform)
+            : lyrics.origin
+    }
+
     /// The pin target: same group geometry, right edge against the display edge.
-    static func snappedRightOrigin(for lyrics: NSRect, visibleFrames: [NSRect]) -> NSPoint {
-        let group = envelope(for: lyrics)
+    static func snappedRightOrigin(for lyrics: NSRect, visibleFrames: [NSRect],
+                                   showsWaveform: Bool = true) -> NSPoint {
+        let group = envelope(for: lyrics, showsWaveform: showsWaveform)
         let safe = OverlayVisibility.snappedRightOrigin(for: group, visibleFrames: visibleFrames)
         return NSPoint(x: lyrics.minX + safe.x - group.minX,
                        y: lyrics.minY + safe.y - group.minY)
