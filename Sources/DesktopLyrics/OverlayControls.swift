@@ -192,8 +192,8 @@ final class OverlayControls: NSObject {
         lastOverlay = overlay
         let point = ToolbarPlacement.origin(overlay: overlay, size: Self.toolbarSize)
         panel.setFrameOrigin(point)
-        let toolOffsets: [CGFloat] = [3, 43, 83]
-        for (index, x) in toolOffsets.enumerated() {
+        controlPanels[0].setFrameOrigin(OverlayLayout.lockFrame(for: overlay).origin)
+        for (index, x) in zip(1...2, [CGFloat(3), 43]) {
             controlPanels[index].setFrameOrigin(NSPoint(x: point.x + x, y: point.y + 2))
         }
 

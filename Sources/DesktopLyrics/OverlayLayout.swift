@@ -19,13 +19,17 @@ enum OverlayLayout {
     /// Guard rails for the band that hugs the content.
     static let bandHeightRange: ClosedRange<CGFloat> = 40...320
 
-    /// Three right-aligned tool icons: lock, style and quit.
-    static let toolbarSize = NSSize(width: 120, height: 36)
+    /// The style and quit icons stay together on the right; the lock lives on
+    /// the leading edge as a stable, content-aligned state control.
+    static let toolbarSize = NSSize(width: 80, height: 36)
+    static let lockSize = NSSize(width: 34, height: 32)
     static let playbackSize = NSSize(width: 132, height: 32)
     static let railSize = NSSize(width: 832, height: 28)
 
     static let toolbarRightInset: CGFloat = 16
     static let toolbarTopInset: CGFloat = 10
+    static let lockLeftInset: CGFloat = 8
+    static let lockTitleGap: CGFloat = 8
     static let railInset = NSPoint(x: 24, y: 12)
     static let titleLeftInset: CGFloat = 24
     static let titleGap: CGFloat = 12
@@ -54,13 +58,23 @@ enum OverlayLayout {
                size: toolbarSize)
     }
 
+    /// The lock is pinned to the leading edge of the top row, independent of the
+    /// lyric alignment. Its trailing edge reserve keeps the title clear of it.
+    static func lockFrame(for lyrics: NSRect) -> NSRect {
+        let tools = toolbarFrame(for: lyrics)
+        return NSRect(x: outerFrame(for: lyrics).minX + lockLeftInset,
+                      y: tools.midY - lockSize.height / 2,
+                      width: lockSize.width, height: lockSize.height)
+    }
+
     /// One single-line title in the top row, ending before the centered transport
     /// keys, which in turn end before the tool icons.
     static func titleFrame(for lyrics: NSRect) -> NSRect {
         let outer = outerFrame(for: lyrics)
         let tools = toolbarFrame(for: lyrics)
         let playback = playbackFrame(for: lyrics)
-        let x = outer.minX + titleLeftInset
+        let x = max(outer.minX + titleLeftInset,
+                    lockFrame(for: lyrics).maxX + lockTitleGap)
         return NSRect(x: x, y: tools.midY - titleHeight / 2,
                       width: max(0, min(tools.minX, playback.minX) - titleGap - x),
                       height: titleHeight)
