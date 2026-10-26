@@ -187,6 +187,7 @@ let lyricRect = NSRect(x: 116, y: 180, width: 848, height: 126)
 let screen = NSRect(x: 0, y: 0, width: 1000, height: 600)
 let outerRect = OverlayLayout.outerFrame(for: lyricRect)
 let toolbarRect = OverlayLayout.toolbarFrame(for: lyricRect)
+let lockRect = OverlayLayout.lockFrame(for: lyricRect)
 let playbackRect = OverlayLayout.playbackFrame(for: lyricRect)
 let railRect = OverlayLayout.railFrame(for: lyricRect)
 let envelope = OverlayLayout.envelope(for: lyricRect)
@@ -198,9 +199,14 @@ check(near(compactOuter.maxY, outerRect.maxY) &&
       near(compactOuter.minY, lyricRect.minY - OverlayLayout.compactBottomInset) &&
       near(compactOuter.height, outerRect.height - 36),
       "Hiding the waveform removes its reserved rail strip without moving the top row")
-check(toolbarRect == NSRect(x: 844, y: 310, width: 120, height: 36) &&
+check(toolbarRect == NSRect(x: 884, y: 310, width: 80, height: 36) &&
       near(toolbarRect.minY - lyricRect.maxY, 4) && outerRect.contains(toolbarRect),
-      "Only placement and appearance tools occupy the compact top-right row")
+      "Appearance and quit occupy the compact top-right row")
+check(lockRect == NSRect(x: 108, y: 312, width: 34, height: 32) &&
+      near(lockRect.midY, toolbarRect.midY) && outerRect.contains(lockRect) &&
+      !lockRect.intersects(lyricRect) && !lockRect.intersects(railRect) &&
+      !lockRect.intersects(playbackRect) && !lockRect.intersects(toolbarRect),
+      "The lock stays on the leading edge, independent of lyric alignment")
 check(playbackRect == NSRect(x: 474, y: 312, width: 132, height: 32) &&
       near(playbackRect.midY, toolbarRect.midY) &&
       near(playbackRect.midX, outerRect.midX) && outerRect.contains(playbackRect),
@@ -217,13 +223,14 @@ check(ToolbarPlacement.origin(overlay: lyricRect,
                               size: OverlayLayout.toolbarSize) == toolbarRect.origin,
       "Toolbar placement uses the enclosing frame's top-right inset")
 let titleRect = OverlayLayout.titleFrame(for: lyricRect)
-check(near(titleRect.minX, outerRect.minX + 24) &&
+check(near(titleRect.minX, lockRect.maxX + OverlayLayout.lockTitleGap) &&
       near(titleRect.maxX, playbackRect.minX - 12) &&
       near(titleRect.midY, toolbarRect.midY) &&
       outerRect.contains(titleRect) &&
-      !titleRect.intersects(toolbarRect) && !titleRect.intersects(lyricRect) &&
+      !titleRect.intersects(lockRect) && !titleRect.intersects(toolbarRect) &&
+      !titleRect.intersects(lyricRect) &&
       !titleRect.intersects(railRect) && !titleRect.intersects(playbackRect),
-      "The single-line song title shares the top row and never reaches transport or tools")
+      "The song title follows the leading lock and never reaches transport or tools")
 let secondScreen = NSRect(x: 1000, y: -200, width: 1200, height: 700)
 let pinned = OverlayLayout.snappedRightOrigin(for: lyricRect, visibleFrames: [screen])
 let pinnedGroup = OverlayLayout.envelope(for: NSRect(origin: pinned, size: lyricRect.size))
@@ -368,9 +375,10 @@ check(controls.controlPanels.allSatisfy { $0.isVisible },
 controls.setVisible(false)
 controls.follow(overlay: lyricRect)
 check(controls.panel.frame == toolbarRect && controls.playbackPanel.frame == playbackRect &&
-      (0...2).allSatisfy { controls.panel.frame.contains(controls.controlPanels[$0].frame) } &&
+      controls.controlPanels[0].frame == lockRect &&
+      (1...2).allSatisfy { controls.panel.frame.contains(controls.controlPanels[$0].frame) } &&
       (3...5).allSatisfy { controls.playbackPanel.frame.contains(controls.controlPanels[$0].frame) },
-      "Three tools occupy the upper-right row and three transport buttons sit beneath lyrics")
+      "The leading lock, two right tools and three transport buttons follow the lyrics")
 check((3...5).allSatisfy { near(controls.controlPanels[$0].frame.midY, playbackRect.midY) } &&
       near(controls.controlPanels[4].frame.midX, outerRect.midX) &&
       controls.controlPanels[3].frame.maxX < controls.controlPanels[4].frame.minX &&
@@ -456,7 +464,10 @@ check(controls.controlPanels.allSatisfy { !$0.ignoresMouseEvents },
 controls.follow(overlay: lyricRect)
 check(controls.panel.frame == toolbarRect &&
       controls.panel.frame.size == OverlayLayout.toolbarSize,
-      "The tool row keeps its upper-right geometry")
+      "The secondary tools keep their upper-right geometry")
+check(controls.controlPanels[0].frame == lockRect &&
+      controls.controlPanels[0].frame.minX < controls.controlPanels[1].frame.minX,
+      "The lock follows the leading edge while style and quit stay on the right")
 check(controls.panel.frame == toolbarRect && controls.playbackPanel.frame == playbackRect &&
       !controls.panel.frame.intersects(lyricRect) &&
       !controls.playbackPanel.frame.intersects(lyricRect),
@@ -477,8 +488,8 @@ check(controls.panel.frame.contains(gap) && controls.playbackPanel.frame.contain
       !activeWindows.contains(where: { $0.frame.contains(gap) || $0.frame.contains(playbackGap) }),
       "Both transparent icon gaps contain no mouse-intercepting window")
 check(near(controls.controlPanels[2].frame.maxX, controls.panel.frame.maxX - 3) &&
-      near(controls.controlPanels[0].frame.minX, controls.panel.frame.minX + 3),
-      "The quit hit window closes the tool row on its unchanged right margin")
+      near(controls.controlPanels[1].frame.minX, controls.panel.frame.minX + 3),
+      "The secondary tools close the top row on its unchanged right margin")
 check(near(controls.controlPanels[2].frame.minY, controls.panel.frame.minY + 2),
       "The quit hit window stays vertically centered like the other tools")
 controls.setVisible(false)
@@ -577,6 +588,14 @@ check(controls.controlPanels[0].isVisible &&
       (1...5).allSatisfy { !controls.controlPanels[$0].isVisible } &&
       !controls.playbackPanel.isVisible,
       "A locked overlay shows only the unlock key")
+controls.setControlsVisible(false)
+check(controls.controlPanels.allSatisfy { !$0.isVisible } &&
+      !controls.panel.isVisible && !controls.playbackPanel.isVisible,
+      "Leaving a locked overlay hides the unlock key until the pointer returns")
+controls.setControlsVisible(true)
+check(controls.controlPanels[0].isVisible &&
+      (1...5).allSatisfy { !controls.controlPanels[$0].isVisible },
+      "Returning the pointer restores only the unlock key while locked")
 awaitMouseState("Locked lyrics and controls pass clicks through except the unlock key") {
     mouseTarget(lockCenter) == controls.controlPanels[0].windowNumber &&
     (1...5).allSatisfy { index in
