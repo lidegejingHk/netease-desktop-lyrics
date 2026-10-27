@@ -1,5 +1,7 @@
 import AppKit
+import ApplicationServices
 import Foundation
+import Sparkle
 
 private struct LyricEvent: Decodable {
     let kind: String
@@ -32,6 +34,8 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
     private var style = OverlayStyle.defaultValue
     private let launchMode = DesktopLaunchMode(arguments: ProcessInfo.processInfo.arguments)
     private var bridge: Process?
+    private var updaterController: SPUStandardUpdaterController!
+    private var didPromptAccessibility = false
     private var shouldStop = false
     private var locked = UserDefaults.standard.bool(forKey: "overlayLocked")
     private var showing = UserDefaults.standard.object(forKey: "overlayShowing") as? Bool ?? true
@@ -48,6 +52,9 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        updaterController = SPUStandardUpdaterController(startingUpdater: true,
+                                                         updaterDelegate: nil,
+                                                         userDriverDelegate: nil)
         style = styleStore.load()
         configureWindow()
         configureOuterFrame()
@@ -315,6 +322,9 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         let permission = NSMenuItem(title: "打开辅助功能设置…", action: #selector(openAccessibility(_:)), keyEquivalent: "")
         permission.target = self
         menu.addItem(permission)
+        let updates = NSMenuItem(title: "检查更新…", action: #selector(checkForUpdates(_:)), keyEquivalent: "")
+        updates.target = self
+        menu.addItem(updates)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "退出桌面歌词", action: #selector(quit(_:)), keyEquivalent: "q")
         quit.target = self
@@ -386,10 +396,21 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         }
     }
 
+    private func promptForAccessibility() {
+        guard launchMode == .app, !didPromptAccessibility, !AXIsProcessTrusted() else { return }
+        didPromptAccessibility = true
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+    }
+
     @objc private func openAccessibility(_ sender: NSMenuItem) {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    @objc private func checkForUpdates(_ sender: NSMenuItem) {
+        updaterController.checkForUpdates(nil)
     }
 
     @objc private func quit(_ sender: NSMenuItem) { NSApp.terminate(nil) }
@@ -471,7 +492,9 @@ private final class AppController: NSObject, NSApplicationDelegate, NSWindowDele
         switch reason {
         case "not_running": return "打开网易云音乐后，歌词会出现在这里"
         case "no_song": return "等待当前歌曲…"
-        case "accessibility_permission_denied": return launchMode.accessibilityPermissionStatus
+        case "accessibility_permission_denied":
+            promptForAccessibility()
+            return launchMode.accessibilityPermissionStatus
         case "permission_denied": return "无法读取网易云本地播放记录：权限不足"
         case "network": return "歌词网络不可用，稍后自动重试"
         case "no_lyrics": return "当前歌曲暂无逐行歌词"

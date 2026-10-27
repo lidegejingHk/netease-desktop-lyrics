@@ -31,9 +31,9 @@
 2. 首次打开被系统拦下时，在「系统设置 → 隐私与安全性」选择“仍要打开”。
 3. 首次启动提示需要辅助功能权限时，在「系统设置 → 隐私与安全性 → 辅助功能」允许“网易云桌面歌词”，然后重启 App。
 
-更新到新版本时 App 会重新签名，macOS 可能不再认可旧的辅助功能授权；若新版不显示歌词，从辅助功能列表中移除旧条目，再重新添加当前路径下的 App。
+更新：带应用内更新的版本会在菜单栏提供「检查更新…」，签名身份固定，辅助功能授权跨版本保留。更早的版本需要手动覆盖安装一次并重新授权；首次安装的系统拦截仍需允许一次。
 
-从源码构建：`./scripts/build-app.sh`（需 Rust/Cargo、Apple Command Line Tools 与联网）。更细的用法见 [docs/usage.md](docs/usage.md)。
+从源码构建：`./scripts/build-app.sh`（需 Rust/Cargo、Apple Command Line Tools 与联网）。
 
 ## 2. 技术栈
 
@@ -41,16 +41,14 @@
 | --- | --- | --- |
 | 歌词引擎 | Rust | 只读解析网易云 Local Storage，交叉验证播放状态，请求并解析逐行歌词，输出有界 JSON 事件流 |
 | 桌面宿主 | Swift / AppKit | 菜单栏、无边框浮层与图标命中窗口、样式面板、辅助功能菜单播放控制 |
-| 构建 | Cargo + `swiftc` | `scripts/build-app.sh` 组装 .app 并 ad-hoc 签名；`scripts/test-swift.sh` 跑宿主断言 |
+| 构建 | Cargo + `swiftc` | `scripts/build-app.sh` 组装 .app 并签名；`scripts/test-swift.sh` 跑宿主断言 |
 
 - 运行环境：Apple Silicon（arm64）、macOS 13 及以上；在 macOS 26.6.2、网易云音乐 3.1.12 上验证。
 - 网易云内部格式、菜单与歌词接口均非公开稳定 API，其他客户端版本需重新验收。
 
 ## 3. 项目架构
 
-![运行结构：网易云客户端（只读本地日志与控制菜单）→ Rust 引擎（HTTPS 歌词）→ Swift 宿主（JSON 事件流与 AXPress 播放控制）](docs/architecture.svg)
-
-两个进程、五条通道（更细的实现说明——浮层几何、控件显隐、歌词带测量、样式持久化——见 [docs/architecture.md](docs/architecture.md)）：
+两个进程、五条通道：
 
 1. **数据通道**：宿主把引擎作为子进程启动，逐行读取它的 stdout；每条事件携带歌词、播放标记、估算位置与短状态码，**不含歌曲 ID**，单行上限 64 KiB。
 2. **播放状态（Rust）**：只读解析网易云 Local Storage 的 LevelDB 物理日志，再与辅助功能读到的「控制」菜单文案交叉印证；用单调时钟估算位置，暂停时冻结。
@@ -58,40 +56,27 @@
 4. **播放控制（Swift）**：用辅助功能在网易云「控制」菜单里匹配唯一、启用且可 AXPress 的菜单项并按下（0.35 s 超时），不在播放器窗口做盲点击。
 5. **桌面浮层（Swift/AppKit）**：一组无边框 `NSPanel` 组成圆角背景、歌词带、工具条与播放键、底部声浪；锁定后除锁定／解锁键外，整块浮层点击穿透，控件显隐跟随鼠标。
 
-## 4. DEMO 演示
-
-![概念演示：官方桌面歌词被放大的窗口吞掉；替代浮层可拖动、可锁定、点击穿透，窗口随便放大歌词都在](docs/demo/desktop-lyrics-demo.gif)
-
-*概念演示动画（非实机录屏）；源文件与重新渲染方式见 [docs/demo/](docs/demo/)。*
-
-## 5. 如何贡献
+## 4. 如何贡献
 
 - **报问题**：写清 macOS 版本、网易云音乐版本与复现步骤。⚠️ 命令行输出可能包含真实歌曲 ID 与歌词，**不要**直接贴出来。
 - **提代码**：从 `main` 拉分支 → 改代码 → 本地跑通测试 → 开 PR；PR 说明动机、改动与验证方式。
 - **欢迎的方向**：适配新版网易云客户端、歌词接口与格式变化、交互与可访问性细节、文档与多语言翻译。
 
-## 6. 项目开发规范
+## 5. 项目开发规范
 
 - **分支与提交**：不直推 `main`，每个改动走分支 + PR；提交信息用英文祈使句，说明“为什么”而不只是“改了什么”。
 - **测试必须全绿**：`cargo test`（引擎）与 `./scripts/test-swift.sh`（宿主几何与交互断言）；`scripts/build-app.sh` 以 `-warnings-as-errors` 编译宿主。
 - **行为改动带断言**：新增或修改交互时，在 `tests/OverlayAppearanceTests/` 补对应断言。
 - **契约要守住**：引擎事件流是宿主的唯一输入（有界 JSON 行、不含歌曲 ID、单行 64 KiB 上限）；宿主不猜测播放状态，只信已验证的观测。
 - **隐私红线**：不注入客户端、不采集与上传数据；真实歌曲 ID 与歌词不得出现在 Issue、日志或提交里。
-- **版本与发版**：版本号唯一来源是 `app/Info.plist`，完整步骤见 [docs/release.md](docs/release.md)。
+- **版本与发版**：版本号唯一来源是 `app/Info.plist`。
 
-## 7. 项目支持
+## 6. 项目支持
 
 如果这个工具帮到了你，欢迎请作者喝杯咖啡 ☕️
-
-<!-- 把赞赏码图片放到 docs/support/（如 wechat-reward.png / alipay-reward.png）后，取消下面的注释：
-<p align="center">
-  <img src="docs/support/wechat-reward.png" width="200" alt="微信赞赏码">
-  <img src="docs/support/alipay-reward.png" width="200" alt="支付宝收款码">
-</p>
--->
 
 也欢迎点个 ⭐️、提 Issue 或 PR，这些都是很好的支持。
 
 ---
 
-许可：[MIT](LICENSE) · 用法细节：[docs/usage.md](docs/usage.md) · 诊断与隐私：[docs/diagnostics.md](docs/diagnostics.md)
+许可：[MIT](LICENSE)

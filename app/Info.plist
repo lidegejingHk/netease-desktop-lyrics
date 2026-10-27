@@ -6,10 +6,15 @@
     <key>CFBundleName</key><string>网易云桌面歌词</string>
     <key>CFBundleDisplayName</key><string>网易云桌面歌词</string>
     <key>CFBundleExecutable</key><string>NeteaseDesktopLyrics</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundleShortVersionString</key><string>0.4.0</string>
     <key>CFBundleVersion</key><string>4</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>
     <key>LSUIElement</key><true/>
+    <key>SUFeedURL</key><string>https://cdn.jsdelivr.net/gh/lidegejingHk/netease-desktop-lyrics@main/appcast.xml</string>
+    <key>SUPublicEDKey</key><string>M9RjTiLL4sG+M4IrVlXmrqTTsJygTxw8OiJuZTauJ8Q=</string>
+    <key>SUEnableAutomaticChecks</key><true/>
+    <key>SUScheduledCheckInterval</key><integer>86400</integer>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSHumanReadableCopyright</key><string>Local personal utility</string>
 </dict>

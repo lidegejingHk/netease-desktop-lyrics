@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>网易云桌面歌词</title>
+    <link>https://cdn.jsdelivr.net/gh/lidegejingHk/netease-desktop-lyrics@main/appcast.xml</link>
+    <description>网易云桌面歌词更新源</description>
+    <language>zh-CN</language>
+    <!-- 发版时在此追加 <item>，字段与签名步骤见 docs/updates.md -->
+  </channel>
+</rss>
