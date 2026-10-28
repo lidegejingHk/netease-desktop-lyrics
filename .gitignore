@@ -4,7 +4,6 @@
 /dist/
 /dist-preview/
 /dist-backup/
-docs/demo/*.mp4
-docs/demo/.video-tmp-*
 /vendor/
-site/downloads/*.zip
+/docs/
+/site/
